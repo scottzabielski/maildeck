@@ -442,6 +442,37 @@ button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
   white-space: nowrap;
 }
 
+.email-sweep-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-tertiary);
+  background: var(--bg-surface);
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.email-sweep-badge svg {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+}
+
+.email-sweep-badge.warning {
+  color: var(--amber);
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.email-sweep-badge.critical {
+  color: var(--red);
+  background: rgba(239, 68, 68, 0.1);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
 /* ========================================
    SWEEP COLUMN
    ======================================== */

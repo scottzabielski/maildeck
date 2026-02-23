@@ -28,6 +28,7 @@ export function useEmailAccounts(userId: string | undefined) {
       return data as DbEmailAccount[];
     },
     enabled: !!supabase && !!userId,
+    refetchInterval: 15000, // Refresh every 15 seconds to pick up sync status changes
   });
 }
 

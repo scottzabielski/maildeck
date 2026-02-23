@@ -8,7 +8,7 @@ interface InboxColumnProps {
 }
 
 export function InboxColumn({ accountId }: InboxColumnProps) {
-  const { emails, accounts, disabledAccountIds, selectedEmail } = useStore();
+  const { emails, accounts, disabledAccountIds, selectedEmail, sweepEmails } = useStore();
   const selectedEmailId = selectedEmail ? selectedEmail.emailId : null;
 
   const columnEmails = useMemo(() => {
@@ -20,6 +20,14 @@ export function InboxColumn({ accountId }: InboxColumnProps) {
     }
     return [...filtered].sort((a, b) => b.time - a.time);
   }, [emails, accountId, disabledAccountIds]);
+
+  const sweepLookup = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const s of sweepEmails) {
+      map.set(s.id, s.sweepSeconds);
+    }
+    return map;
+  }, [sweepEmails]);
 
   const account = accountId ? accounts.find(a => a.id === accountId) : null;
   const accent = account ? account.color : '#3b82f6';
@@ -61,6 +69,7 @@ export function InboxColumn({ accountId }: InboxColumnProps) {
               columnId={accountId || 'all-inboxes'}
               sourceAccountId={accountId || undefined}
               selectedEmailId={selectedEmailId}
+              sweepSeconds={sweepLookup.get(email.id)}
             />
           ))}
         </AnimatePresence>

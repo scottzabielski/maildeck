@@ -155,6 +155,7 @@ export interface StoreState {
   reorderAccounts: (orderedAccounts: Account[]) => void;
   reorderColumns: (orderedColumns: Column[]) => void;
   renameAccount: (accountId: string, name: string) => void;
+  _persistAccountRename?: (accountId: string, name: string) => void;
   toggleSettings: () => void;
   setSettingsSection: (section: string) => void;
   openCriteriaEditor: (columnId: string) => void;
@@ -233,9 +234,12 @@ export const useStore = create<StoreState>((set, get) => ({
     set({ columns: orderedColumns });
     get()._persistColumnReorder?.(orderedColumns);
   },
-  renameAccount: (accountId, name) => set(s => ({
-    accounts: s.accounts.map(a => a.id === accountId ? { ...a, name } : a),
-  })),
+  renameAccount: (accountId, name) => {
+    set(s => ({
+      accounts: s.accounts.map(a => a.id === accountId ? { ...a, name } : a),
+    }));
+    get()._persistAccountRename?.(accountId, name);
+  },
   toggleSettings: () => set(s => ({ isSettingsOpen: !s.isSettingsOpen, settingsSection: 'accounts' })),
   setSettingsSection: (section) => set({ settingsSection: section }),
   openCriteriaEditor: (columnId) => set({ editingColumnId: columnId }),
@@ -300,12 +304,9 @@ export const useStore = create<StoreState>((set, get) => ({
     const email = get().emails.find(e => e.id === emailId);
     if (!email) return;
     const delaySec = get().sweepDelayHours * 3600;
-    const sel = get().selectedEmail;
     set(s => ({
-      emails: s.emails.filter(e => e.id !== emailId),
       sweepEmails: [...s.sweepEmails, { id: email.id, accountId: email.accountId, sender: email.sender, subject: email.subject, sweepSeconds: delaySec, exempted: false }].sort((a, b) => a.sweepSeconds - b.sweepSeconds),
       undoAction: { type: 'moveToSweep', email, timestamp: Date.now() },
-      selectedEmail: sel && sel.emailId === emailId ? null : s.selectedEmail,
     }));
   },
 
@@ -341,7 +342,6 @@ export const useStore = create<StoreState>((set, get) => ({
       fireEmailAction(action.email.id, 'unarchive');
     } else if (action.type === 'moveToSweep') {
       set(s => ({
-        emails: [action.email as Email, ...s.emails],
         sweepEmails: s.sweepEmails.filter(e => e.id !== action.email.id),
         undoAction: null,
       }));
@@ -376,7 +376,6 @@ export const useStore = create<StoreState>((set, get) => ({
       const matching = s.emails.filter(e => e.sender === sender);
       if (action === 'moveAllToSweep' || action === 'alwaysSweep') {
         return {
-          emails: s.emails.filter(e => e.sender !== sender),
           sweepEmails: [
             ...s.sweepEmails,
             ...matching.map(e => ({ id: e.id, accountId: e.accountId, sender: e.sender, subject: e.subject, sweepSeconds: delaySec, exempted: false })),
@@ -385,10 +384,8 @@ export const useStore = create<StoreState>((set, get) => ({
       }
       if (action === 'keepLatest') {
         const sorted = [...matching].sort((a, b) => b.time - a.time);
-        const keep = sorted[0];
         const rest = sorted.slice(1);
         return {
-          emails: s.emails.filter(e => e.sender !== sender || e.id === (keep && keep.id)),
           sweepEmails: [
             ...s.sweepEmails,
             ...rest.map(e => ({ id: e.id, accountId: e.accountId, sender: e.sender, subject: e.subject, sweepSeconds: delaySec, exempted: false })),
@@ -408,9 +405,14 @@ export const useStore = create<StoreState>((set, get) => ({
     emails: [{ starred: false, ...email } as Email, ...s.emails],
   })),
 
-  tickSweepCountdowns: () => set(s => ({
-    sweepEmails: s.sweepEmails
-      .map(e => ({ ...e, sweepSeconds: Math.max(0, e.sweepSeconds - 1) }))
-      .filter(e => e.sweepSeconds > 0),
-  })),
+  tickSweepCountdowns: () => set(s => {
+    const updated = s.sweepEmails.map(e => ({ ...e, sweepSeconds: Math.max(0, e.sweepSeconds - 1) }));
+    const expired = updated.filter(e => e.sweepSeconds <= 0);
+    const expiredIds = new Set(expired.map(e => e.id));
+    return {
+      sweepEmails: updated.filter(e => e.sweepSeconds > 0),
+      // Remove expired sweep emails from the main list (they've been archived/deleted)
+      emails: expiredIds.size > 0 ? s.emails.filter(e => !expiredIds.has(e.id)) : s.emails,
+    };
+  }),
 }));

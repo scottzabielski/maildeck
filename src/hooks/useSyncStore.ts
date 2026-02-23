@@ -4,7 +4,7 @@ import { useAuth } from './useAuth.ts';
 import { useProfile, useUpdateProfile } from './useProfile.ts';
 import { useColumns, useReorderColumns } from './useColumns.ts';
 import { useSweepRules } from './useSweepRules.ts';
-import { useEmailAccounts, useReorderEmailAccounts } from './useEmailAccounts.ts';
+import { useEmailAccounts, useReorderEmailAccounts, useUpdateEmailAccount } from './useEmailAccounts.ts';
 import { useEmails, useSyncAccount } from './useEmails.ts';
 import { useSweepQueue } from './useSweepQueue.ts';
 import { useRealtime } from './useRealtime.ts';
@@ -32,6 +32,7 @@ export function useSyncStore() {
   const updateProfileMutation = useUpdateProfile();
   const reorderColumnsMutation = useReorderColumns();
   const reorderAccountsMutation = useReorderEmailAccounts();
+  const updateAccountMutation = useUpdateEmailAccount();
   const syncAccountMutation = useSyncAccount();
 
   // Track which accounts we've already triggered initial sync for
@@ -131,15 +132,35 @@ export function useSyncStore() {
     useStore.setState({ sweepEmails: mapped });
   }, [dbSweepQueue]);
 
-  // Auto-trigger initial sync for newly connected accounts
+  // Auto-trigger initial sync for newly connected accounts (staggered to avoid rate limits)
   useEffect(() => {
     if (useMockData || !dbAccounts) return;
-    for (const acct of dbAccounts) {
-      if (acct.sync_status === 'never_synced' && !syncedAccountsRef.current.has(acct.id)) {
+    const needsSync = dbAccounts.filter(
+      acct => (acct.sync_status === 'never_synced' || acct.sync_status === 'error')
+        && !syncedAccountsRef.current.has(acct.id)
+    );
+    if (needsSync.length === 0) return;
+
+    // Sync accounts sequentially with delays to avoid rate limits
+    let cancelled = false;
+    (async () => {
+      for (let i = 0; i < needsSync.length; i++) {
+        if (cancelled) break;
+        const acct = needsSync[i];
         syncedAccountsRef.current.add(acct.id);
-        syncAccountMutation.mutate({ accountId: acct.id, mode: 'full' });
+        try {
+          await syncAccountMutation.mutateAsync({ accountId: acct.id, mode: 'full' });
+        } catch (e) {
+          console.error(`Sync failed for ${acct.email}:`, e);
+        }
+        // Wait 2 seconds between accounts to avoid rate limits
+        if (i < needsSync.length - 1) {
+          await new Promise(r => setTimeout(r, 2000));
+        }
       }
-    }
+    })();
+
+    return () => { cancelled = true; };
   }, [dbAccounts, syncAccountMutation]);
 
   // Return mutation helpers for the settings panel to use
@@ -169,6 +190,10 @@ export function useSyncStore() {
         return storeAcct ? { ...da, sort_order: i } : da;
       });
       reorderAccountsMutation.mutate({ accounts: dbAccts, userId });
+    },
+    persistAccountRename: (accountId: string, name: string) => {
+      if (useMockData || !userId) return;
+      updateAccountMutation.mutate({ id: accountId, display_name: name, userId });
     },
   };
 }

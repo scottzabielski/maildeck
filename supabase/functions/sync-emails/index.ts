@@ -163,18 +163,17 @@ async function gmailFullSync(
 
   messageIds = messageIds.slice(0, 500);
 
-  // Batch fetch message metadata
+  // Fetch message metadata sequentially in small batches to avoid rate limits
   let synced = 0;
-  const batchSize = 50;
+  const batchSize = 5;
 
   for (let i = 0; i < messageIds.length; i += batchSize) {
     const batch = messageIds.slice(i, i + batchSize);
-    const messages = await Promise.all(
-      batch.map(async (id) => {
-        const res = await gmailFetch(accessToken, `/messages/${id}?format=METADATA&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject`);
-        return res.json();
-      }),
-    );
+    const messages = [];
+    for (const id of batch) {
+      const res = await gmailFetch(accessToken, `/messages/${id}?format=METADATA&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject`);
+      messages.push(await res.json());
+    }
 
     const rows = messages.map((msg) => gmailMessageToRow(msg, userId, accountId));
     const { error } = await supabase
@@ -244,14 +243,13 @@ async function gmailIncrementalSync(
   let synced = 0;
   const uniqueAdded = [...new Set(addedIds)];
 
-  for (let i = 0; i < uniqueAdded.length; i += 50) {
-    const batch = uniqueAdded.slice(i, i + 50);
-    const messages = await Promise.all(
-      batch.map(async (id) => {
-        const res = await gmailFetch(accessToken, `/messages/${id}?format=METADATA&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject`);
-        return res.json();
-      }),
-    );
+  for (let i = 0; i < uniqueAdded.length; i += 5) {
+    const batch = uniqueAdded.slice(i, i + 5);
+    const messages = [];
+    for (const id of batch) {
+      const res = await gmailFetch(accessToken, `/messages/${id}?format=METADATA&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject`);
+      messages.push(await res.json());
+    }
 
     const rows = messages
       .filter((msg) => msg.id) // filter out any errors

@@ -42,6 +42,7 @@ export function useEmails(userId: string | undefined) {
       return data as DbEmail[];
     },
     enabled: !!supabase && !!userId,
+    refetchInterval: 30000, // Refresh every 30 seconds for new emails
   });
 }
 

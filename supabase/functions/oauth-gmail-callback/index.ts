@@ -5,7 +5,7 @@ import { createAdminClient } from '../_shared/supabase-admin.ts';
  *
  * Flow:
  * 1. Google redirects here with ?code=...&state=...
- * 2. Verify state JWT to get user_id
+ * 2. Verify state (user's Supabase access token) to get user_id
  * 3. Exchange code for access_token + refresh_token
  * 4. Fetch user profile (email, name)
  * 5. Encrypt tokens via DB function
@@ -29,15 +29,16 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Verify state JWT to get user_id
+    // Verify the state parameter (user's Supabase access token) to get user_id
     const supabase = createAdminClient();
-    const jwtSecret = Deno.env.get('SUPABASE_JWT_SECRET')!;
-    const payload = await verifyJwt(state, jwtSecret);
-    const userId = payload.sub;
+    const { data: { user }, error: authError } = await supabase.auth.getUser(state);
 
-    if (!userId) {
-      return redirectWithError(appUrl, 'Invalid state token');
+    if (authError || !user) {
+      console.error('Auth verification failed:', authError);
+      return redirectWithError(appUrl, 'Invalid or expired session. Please log in and try again.');
     }
+
+    const userId = user.id;
 
     // Exchange authorization code for tokens
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
@@ -143,53 +144,4 @@ function redirectWithError(appUrl: string, message: string): Response {
       Location: `${appUrl}/settings/accounts?error=${encodeURIComponent(message)}`,
     },
   });
-}
-
-/**
- * Minimal JWT verification using Web Crypto API.
- * Verifies HS256 signature and checks expiry.
- */
-async function verifyJwt(
-  token: string,
-  secret: string,
-): Promise<{ sub?: string; exp?: number }> {
-  const parts = token.split('.');
-  if (parts.length !== 3) throw new Error('Invalid JWT');
-
-  const [headerB64, payloadB64, signatureB64] = parts;
-
-  // Verify signature
-  const key = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['verify'],
-  );
-
-  const data = new TextEncoder().encode(`${headerB64}.${payloadB64}`);
-  const signature = base64UrlDecode(signatureB64);
-
-  const valid = await crypto.subtle.verify('HMAC', key, signature, data);
-  if (!valid) throw new Error('Invalid JWT signature');
-
-  // Decode payload
-  const payload = JSON.parse(new TextDecoder().decode(base64UrlDecode(payloadB64)));
-
-  // Check expiry
-  if (payload.exp && payload.exp < Date.now() / 1000) {
-    throw new Error('JWT expired');
-  }
-
-  return payload;
-}
-
-function base64UrlDecode(str: string): Uint8Array {
-  const padded = str.replace(/-/g, '+').replace(/_/g, '/');
-  const binary = atob(padded);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
 }

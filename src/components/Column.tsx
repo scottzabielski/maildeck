@@ -11,7 +11,7 @@ interface ColumnProps {
 }
 
 export function Column({ column }: ColumnProps) {
-  const { emails, accounts, disabledAccountIds, openCriteriaEditor, selectedEmail } = useStore();
+  const { emails, accounts, disabledAccountIds, openCriteriaEditor, selectedEmail, sweepEmails } = useStore();
   const selectedEmailId = selectedEmail ? selectedEmail.emailId : null;
   const columnEmails = useMemo(
     () => emails.filter(e => {
@@ -23,6 +23,14 @@ export function Column({ column }: ColumnProps) {
     }),
     [emails, column.id, column.criteria, column.criteriaLogic, disabledAccountIds]
   );
+  // Build a lookup from email ID → sweep countdown seconds
+  const sweepLookup = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const s of sweepEmails) {
+      map.set(s.id, s.sweepSeconds);
+    }
+    return map;
+  }, [sweepEmails]);
   const unreadCount = columnEmails.filter(e => e.unread).length;
 
   return (
@@ -55,6 +63,7 @@ export function Column({ column }: ColumnProps) {
               accounts={accounts}
               columnId={column.id}
               selectedEmailId={selectedEmailId}
+              sweepSeconds={sweepLookup.get(email.id)}
             />
           ))}
         </AnimatePresence>

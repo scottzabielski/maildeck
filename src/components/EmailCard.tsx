@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import { useStore } from '../store/index.ts';
-import { formatTime } from '../lib/helpers.ts';
+import { formatTime, formatCountdown, getCountdownClass } from '../lib/helpers.ts';
+import { Icons } from './ui/Icons.tsx';
 import type { Email, Account } from '../types/index.ts';
 
 interface EmailCardProps {
@@ -10,9 +11,10 @@ interface EmailCardProps {
   columnId: string;
   sourceAccountId?: string;
   selectedEmailId: string | null;
+  sweepSeconds?: number;
 }
 
-export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, selectedEmailId }: EmailCardProps) {
+export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, selectedEmailId, sweepSeconds }: EmailCardProps) {
   const openContextMenu = useStore(s => s.openContextMenu);
   const selectEmail = useStore(s => s.selectEmail);
   const account = accounts.find(a => a.id === email.accountId);
@@ -26,6 +28,8 @@ export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, 
   const handleClick = () => {
     selectEmail(email.id, columnId || email.columnId, sourceAccountId || email.accountId);
   };
+
+  const hasSweep = sweepSeconds != null && sweepSeconds > 0;
 
   return (
     <motion.div
@@ -43,6 +47,12 @@ export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, 
         <span className="email-sender">{email.sender}</span>
         {email.starred && <span className="star-indicator">{'\u2605'}</span>}
         {account && <span className="email-account-dot" style={{ background: account.color }} />}
+        {hasSweep && (
+          <span className={`email-sweep-badge ${getCountdownClass(sweepSeconds)}`}>
+            <Icons.Clock />
+            {formatCountdown(sweepSeconds)}
+          </span>
+        )}
         <span className="email-time">{formatTime(email.time)}</span>
       </div>
       <div className="email-subject">{email.subject}</div>
