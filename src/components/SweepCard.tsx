@@ -9,9 +9,13 @@ interface SweepCardProps {
 }
 
 export function SweepCard({ email }: SweepCardProps) {
-  const { accounts, exemptSweepEmail } = useStore();
+  const { accounts, exemptSweepEmail, selectEmail } = useStore();
   const account = accounts.find(a => a.id === email.accountId);
   const cdClass = getCountdownClass(email.sweepSeconds);
+
+  const handleClick = () => {
+    selectEmail(email.id, 'sweep', email.accountId);
+  };
 
   return (
     <motion.div
@@ -21,6 +25,8 @@ export function SweepCard({ email }: SweepCardProps) {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, x: 30, transition: { duration: 0.2 } }}
       transition={{ duration: 0.25 }}
+      onClick={handleClick}
+      style={{ cursor: 'pointer' }}
     >
       <div className="sweep-card-top">
         <span className="email-sender">{email.sender}</span>
@@ -34,7 +40,7 @@ export function SweepCard({ email }: SweepCardProps) {
         </div>
         <button
           className="exempt-btn"
-          onClick={() => exemptSweepEmail(email.id)}
+          onClick={(e) => { e.stopPropagation(); exemptSweepEmail(email.id); }}
         >
           Exempt
         </button>

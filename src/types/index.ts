@@ -32,6 +32,7 @@ export type Email = {
   accountId: string;
   sender: string;
   senderEmail?: string;
+  toEmail?: string;
   subject: string;
   snippet: string;
   time: number;
@@ -47,6 +48,7 @@ export type SweepEmail = {
   subject: string;
   sweepSeconds: number;
   exempted: boolean;
+  action?: string;
 };
 
 export type SweepRule = {

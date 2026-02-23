@@ -3,10 +3,12 @@ import { motion } from 'framer-motion';
 import { Icons } from './ui/Icons.tsx';
 import { useStore } from '../store/index.ts';
 import { useEmailBody } from '../hooks/useEmailBody.ts';
+import { formatCountdown, getCountdownClass } from '../lib/helpers.ts';
 
 export function EmailViewer() {
-  const { selectedEmail, emails, accounts, deselectEmail, toggleStar, toggleRead, archiveEmail, deleteEmail, openSweepRuleEditor } = useStore();
+  const { selectedEmail, emails, accounts, sweepEmails, deselectEmail, toggleStar, toggleRead, archiveEmail, deleteEmail, openSweepRuleEditor } = useStore();
   const [copied, setCopied] = useState(false);
+  const [showSenderEmail, setShowSenderEmail] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [iframeHeight, setIframeHeight] = useState(400);
 
@@ -93,6 +95,8 @@ export function EmailViewer() {
 
   const avatarLetter = email.sender.charAt(0).toUpperCase();
   const avatarBg = account ? account.color : 'var(--blue)';
+  const sweepItem = sweepEmails.find(s => s.id === email.id);
+  const hasSweep = sweepItem && sweepItem.sweepSeconds > 0;
 
   const hasHtml = body?.body_html;
   const hasText = body?.body_text;
@@ -167,7 +171,15 @@ export function EmailViewer() {
           </div>
           <div className="email-viewer-sender-info">
             <div className="email-viewer-sender-name">
-              {email.sender}
+              <span
+                className="email-viewer-sender-name-text"
+                onClick={() => setShowSenderEmail(!showSenderEmail)}
+              >
+                {email.sender}
+              </span>
+              {showSenderEmail && email.senderEmail && (
+                <span className="email-viewer-sender-email">{email.senderEmail}</span>
+              )}
               {account && (
                 <span
                   className="email-viewer-account-badge"
@@ -177,8 +189,19 @@ export function EmailViewer() {
                 </span>
               )}
             </div>
-            <div className="email-viewer-timestamp">{timestamp}</div>
+            <div className="email-viewer-timestamp">
+              {timestamp}
+              {email.toEmail && account && email.toEmail.toLowerCase() !== account.email.toLowerCase() && (
+                <span className="email-viewer-to"> to {email.toEmail}</span>
+              )}
+            </div>
           </div>
+          {hasSweep && (
+            <span className={`email-viewer-sweep-badge ${getCountdownClass(sweepItem.sweepSeconds)}`}>
+              <Icons.Clock />
+              {sweepItem.action === 'delete' ? 'Delete' : 'Archive'} in {formatCountdown(sweepItem.sweepSeconds)}
+            </span>
+          )}
         </div>
       </div>
       {/* Body */}

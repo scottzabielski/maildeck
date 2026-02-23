@@ -147,6 +147,7 @@ export interface StoreState {
   isSettingsOpen: boolean;
   settingsSection: string;
   editingColumnId: string | null;
+  creatingColumn: boolean;
   undoAction: UndoAction | null;
   contextMenu: ContextMenuState | null;
   sweepDelayHours: number;
@@ -163,7 +164,11 @@ export interface StoreState {
   toggleSettings: () => void;
   setSettingsSection: (section: string) => void;
   openCriteriaEditor: (columnId: string) => void;
+  openNewColumnEditor: () => void;
   closeCriteriaEditor: () => void;
+  addColumn: (column: Omit<Column, 'id'>) => void;
+  removeColumn: (columnId: string) => void;
+  updateColumn: (columnId: string, updates: Partial<Omit<Column, 'id'>>) => void;
   openContextMenu: (x: number, y: number, emailId: string, columnId: string) => void;
   closeContextMenu: () => void;
   selectEmail: (emailId: string, sourceColumnId: string, sourceAccountId: string) => void;
@@ -212,6 +217,7 @@ export const useStore = create<StoreState>((set, get) => ({
   isSettingsOpen: false,
   settingsSection: 'accounts',
   editingColumnId: null,
+  creatingColumn: false,
   undoAction: null,
   contextMenu: null,
   sweepDelayHours: 24,
@@ -246,8 +252,26 @@ export const useStore = create<StoreState>((set, get) => ({
   },
   toggleSettings: () => set(s => ({ isSettingsOpen: !s.isSettingsOpen, settingsSection: 'accounts' })),
   setSettingsSection: (section) => set({ settingsSection: section }),
-  openCriteriaEditor: (columnId) => set({ editingColumnId: columnId }),
-  closeCriteriaEditor: () => set({ editingColumnId: null }),
+  openCriteriaEditor: (columnId) => set({ editingColumnId: columnId, creatingColumn: false }),
+  openNewColumnEditor: () => set({ editingColumnId: null, creatingColumn: true }),
+  closeCriteriaEditor: () => set({ editingColumnId: null, creatingColumn: false }),
+  addColumn: (column) => {
+    const id = `col-${Date.now()}`;
+    const newCol = { ...column, id };
+    set(s => ({ columns: [...s.columns, newCol], creatingColumn: false }));
+    // Persist column order after adding
+    get()._persistColumnReorder?.([...get().columns]);
+  },
+  removeColumn: (columnId) => {
+    set(s => ({ columns: s.columns.filter(c => c.id !== columnId) }));
+    get()._persistColumnReorder?.([...get().columns]);
+  },
+  updateColumn: (columnId, updates) => {
+    set(s => ({
+      columns: s.columns.map(c => c.id === columnId ? { ...c, ...updates } : c),
+    }));
+    get()._persistColumnReorder?.([...get().columns]);
+  },
 
   openContextMenu: (x, y, emailId, columnId) => set({ contextMenu: { x, y, emailId, columnId } }),
   closeContextMenu: () => set({ contextMenu: null }),

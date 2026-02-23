@@ -6,13 +6,12 @@ import { EmailViewer } from './EmailViewer.tsx';
 import { useStore } from '../store/index.ts';
 
 export function StreamsLayout() {
-  const { columns, reorderColumns, selectedEmail, setSettingsSection } = useStore();
-  const toggleSettings = useStore(s => s.toggleSettings);
+  const { columns, reorderColumns, selectedEmail } = useStore();
+  const openNewColumnEditor = useStore(s => s.openNewColumnEditor);
   const isViewing = selectedEmail && selectedEmail.viewMode === 'streams';
 
   const handleAddColumn = () => {
-    setSettingsSection('columns');
-    toggleSettings();
+    openNewColumnEditor();
   };
 
   if (isViewing) {

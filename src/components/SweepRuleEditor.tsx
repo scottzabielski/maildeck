@@ -108,8 +108,9 @@ export function SweepRuleEditor() {
       });
 
       // 2. Find all matching emails and add them to the sweep queue
+      const currentEmails = useStore.getState().emails;
       const sweepEmailIds = new Set(useStore.getState().sweepEmails.map(e => e.id));
-      const matching = emails.filter(e =>
+      const matching = currentEmails.filter(e =>
         emailMatchesCriteria(e, validCriteria, criteriaLogic) && !sweepEmailIds.has(e.id)
       );
 
@@ -123,9 +124,13 @@ export function SweepRuleEditor() {
             delayHours,
           });
         } catch (err) {
-          console.error(`Failed to queue email ${email.id} for sweep:`, err);
+          console.error(`[Sweep] Failed to queue email ${email.id}:`, err);
         }
       }
+
+      // Also update in-memory store immediately for instant UI feedback
+      applySweepAction(validCriteria, criteriaLogic, selectedAction, delayHours);
+      addSweepRule({ name: ruleName, detail, criteria: validCriteria, criteriaLogic, action: selectedAction, delayHours });
     }
 
     closeSweepRuleEditor();

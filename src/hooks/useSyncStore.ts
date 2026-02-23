@@ -99,19 +99,25 @@ export function useSyncStore() {
   // Sync emails → store
   useEffect(() => {
     if (useMockData || !dbEmails) return;
-    const mapped: Email[] = dbEmails.map(e => ({
-      id: e.id,
-      columnId: '', // No hardcoded columnId — columns use criteria matching
-      accountId: e.account_id,
-      sender: e.sender_name || e.sender_email || '',
-      senderEmail: e.sender_email || '',
-      subject: e.subject,
-      snippet: e.snippet,
-      time: new Date(e.received_at).getTime(),
-      unread: e.is_unread,
-      starred: e.is_starred,
-      labels: e.labels,
-    }));
+    const mapped: Email[] = dbEmails.map(e => {
+      const firstRecipient = Array.isArray(e.recipients) && e.recipients.length > 0
+        ? e.recipients[0].email
+        : undefined;
+      return {
+        id: e.id,
+        columnId: '', // No hardcoded columnId — columns use criteria matching
+        accountId: e.account_id,
+        sender: e.sender_name || e.sender_email || '',
+        senderEmail: e.sender_email || '',
+        toEmail: firstRecipient,
+        subject: e.subject,
+        snippet: e.snippet,
+        time: new Date(e.received_at).getTime(),
+        unread: e.is_unread,
+        starred: e.is_starred,
+        labels: e.labels,
+      };
+    });
     useStore.setState({ emails: mapped });
   }, [dbEmails]);
 
@@ -122,12 +128,13 @@ export function useSyncStore() {
       const scheduledAt = new Date(item.scheduled_at).getTime();
       const secondsRemaining = Math.max(0, Math.floor((scheduledAt - Date.now()) / 1000));
       return {
-        id: item.id,
+        id: item.email_id,
         accountId: item.email?.account_id || '',
         sender: item.email?.sender_name || item.email?.sender_email || '',
         subject: item.email?.subject || '',
         sweepSeconds: secondsRemaining,
         exempted: false,
+        action: item.action,
       };
     });
     useStore.setState({ sweepEmails: mapped });
@@ -178,18 +185,20 @@ export function useSyncStore() {
     },
     persistColumnReorder: (columns: Column[]) => {
       if (useMockData || !userId || !dbColumns) return;
-      const dbCols = dbColumns.map((dc, i) => {
-        const storeCol = columns[i];
-        return storeCol ? { ...dc, sort_order: i } : dc;
-      });
+      const dbColMap = new Map(dbColumns.map(dc => [dc.id, dc]));
+      const dbCols = columns.map((storeCol, i) => {
+        const dc = dbColMap.get(storeCol.id);
+        return dc ? { ...dc, sort_order: i } : null;
+      }).filter(Boolean) as typeof dbColumns;
       reorderColumnsMutation.mutate({ columns: dbCols, userId });
     },
     persistAccountReorder: (accounts: Account[]) => {
       if (useMockData || !userId || !dbAccounts) return;
-      const dbAccts = dbAccounts.map((da, i) => {
-        const storeAcct = accounts[i];
-        return storeAcct ? { ...da, sort_order: i } : da;
-      });
+      const dbAcctMap = new Map(dbAccounts.map(da => [da.id, da]));
+      const dbAccts = accounts.map((storeAcct, i) => {
+        const da = dbAcctMap.get(storeAcct.id);
+        return da ? { ...da, sort_order: i } : null;
+      }).filter(Boolean) as typeof dbAccounts;
       reorderAccountsMutation.mutate({ accounts: dbAccts, userId });
     },
     persistAccountRename: (accountId: string, name: string) => {

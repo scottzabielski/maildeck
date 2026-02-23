@@ -47,16 +47,18 @@ export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, 
         <span className="email-sender">{email.sender}</span>
         {email.starred && <span className="star-indicator">{'\u2605'}</span>}
         {account && <span className="email-account-dot" style={{ background: account.color }} />}
-        {hasSweep && (
-          <span className={`email-sweep-badge ${getCountdownClass(sweepSeconds)}`}>
-            <Icons.Clock />
-            {formatCountdown(sweepSeconds)}
-          </span>
-        )}
         <span className="email-time">{formatTime(email.time)}</span>
       </div>
       <div className="email-subject">{email.subject}</div>
       <div className="email-snippet">{email.snippet}</div>
+      {hasSweep && (
+        <div className="email-card-sweep-row">
+          <span className={`email-sweep-badge ${getCountdownClass(sweepSeconds)}`}>
+            <Icons.Clock />
+            {formatCountdown(sweepSeconds)}
+          </span>
+        </div>
+      )}
     </motion.div>
   );
 }

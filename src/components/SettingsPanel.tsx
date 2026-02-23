@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { Reorder } from 'framer-motion';
 import { Icons } from './ui/Icons.tsx';
 import { useStore } from '../store/index.ts';
+import { useAuth } from '../hooks/useAuth.ts';
+import { useDeleteSweepRule } from '../hooks/useSweepRules.ts';
 import { ConnectAccountFlow } from './settings/ConnectAccountFlow.tsx';
 import type { Account, Column as ColumnType, SweepRule } from '../types/index.ts';
 
@@ -154,6 +156,17 @@ function formatCriteriaSummary(rule: SweepRule): string {
 
 function SettingsSweepRules({ sweepRules, toggleSweepRule }: { sweepRules: SweepRule[]; toggleSweepRule: (id: string) => void }) {
   const { sweepDelayHours, setSweepDelayHours } = useStore();
+  const { user } = useAuth();
+  const deleteMutation = useDeleteSweepRule();
+
+  const handleDelete = (ruleId: string) => {
+    if (!user?.id) return;
+    deleteMutation.mutate({ id: ruleId, userId: user.id });
+    // Also remove from in-memory store immediately
+    useStore.setState(s => ({
+      sweepRules: s.sweepRules.filter(r => r.id !== ruleId),
+    }));
+  };
   return (
     <>
       <div className="settings-content-title">Sweep Rules</div>
@@ -188,6 +201,13 @@ function SettingsSweepRules({ sweepRules, toggleSweepRule }: { sweepRules: Sweep
                 className={`sweep-rule-toggle ${rule.enabled ? 'active' : ''}`}
                 onClick={() => toggleSweepRule(rule.id)}
               />
+              <button
+                className="sweep-rule-delete"
+                onClick={() => handleDelete(rule.id)}
+                title="Delete rule"
+              >
+                <Icons.Close />
+              </button>
             </div>
             <div className="sweep-rule-detail">
               {formatCriteriaSummary(rule)}

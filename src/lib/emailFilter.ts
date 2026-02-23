@@ -35,7 +35,9 @@ function matchSingleCriterion(
   criterion: Criterion,
 ): boolean {
   const { field, op, value } = criterion;
-  const v = value.toLowerCase();
+  // Strip surrounding quotes if present (e.g. "quoted phrase" → quoted phrase)
+  const stripped = value.replace(/^["']+|["']+$/g, '');
+  const v = stripped.toLowerCase();
 
   switch (field) {
     case 'from': {
