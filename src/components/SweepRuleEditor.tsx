@@ -4,12 +4,12 @@ import { useStore } from '../store/index.ts';
 
 export function SweepRuleEditor() {
   const { sweepRuleEditor, closeSweepRuleEditor, addSweepRule, applySweepAction, sweepDelayHours } = useStore();
-  const [selectedAction, setSelectedAction] = useState('alwaysSweep');
+  const [selectedAction, setSelectedAction] = useState('archive');
   const [delayHours, setDelayHours] = useState(sweepDelayHours);
 
   useEffect(() => {
     if (sweepRuleEditor) {
-      setSelectedAction('alwaysSweep');
+      setSelectedAction('archive');
       setDelayHours(sweepDelayHours);
     }
   }, [sweepRuleEditor, sweepDelayHours]);
@@ -17,32 +17,25 @@ export function SweepRuleEditor() {
   if (!sweepRuleEditor) return null;
 
   const { sender } = sweepRuleEditor;
-  const isDanger = selectedAction === 'alwaysDelete';
+  const isDanger = selectedAction === 'delete';
 
   const handleApply = () => {
     applySweepAction(sender, selectedAction, delayHours);
-    if (selectedAction !== 'moveAllToSweep') {
-      const actionLabels: Record<string, string> = {
-        alwaysSweep: 'Always move to Sweep',
-        keepLatest: 'Keep only the latest',
-        alwaysDelete: 'Always delete',
-      };
-      addSweepRule({
-        name: sender,
-        detail: actionLabels[selectedAction],
-        sender: sender,
-        action: selectedAction,
-        delayHours: isDanger ? 0 : delayHours,
-      });
-    }
+    addSweepRule({
+      name: sender,
+      detail: selectedAction === 'delete'
+        ? `Auto-delete after ${delayHours}h`
+        : `Auto-archive after ${delayHours}h`,
+      sender: sender,
+      action: selectedAction,
+      delayHours,
+    });
     closeSweepRuleEditor();
   };
 
   const options = [
-    { key: 'moveAllToSweep', title: 'Move all to Sweep', desc: 'One-time bulk move of all messages from this sender', badge: 'One-time' },
-    { key: 'alwaysSweep', title: 'Always move to Sweep', desc: 'Automatically sweep future messages from this sender', badge: 'Persistent' },
-    { key: 'keepLatest', title: 'Keep only the latest', desc: 'Always keep the newest message, sweep the rest', badge: 'Persistent' },
-    { key: 'alwaysDelete', title: 'Always delete', desc: 'Permanently delete all messages from this sender', badge: 'Persistent', danger: true },
+    { key: 'archive', title: 'Archive', desc: 'Automatically archive messages from this sender after the delay', danger: false },
+    { key: 'delete', title: 'Delete', desc: 'Permanently delete messages from this sender after the delay', danger: true },
   ];
 
   return (
@@ -75,32 +68,27 @@ export function SweepRuleEditor() {
               >
                 <div className="sweep-rule-option-radio" />
                 <div className="sweep-rule-option-content">
-                  <div className="sweep-rule-option-title">
-                    {opt.title}
-                    <span className="sweep-rule-option-badge">{opt.badge}</span>
-                  </div>
+                  <div className="sweep-rule-option-title">{opt.title}</div>
                   <div className="sweep-rule-option-desc">{opt.desc}</div>
                 </div>
               </div>
             ))}
           </div>
-          {/* Delay dropdown (hidden for delete) */}
-          {!isDanger && (
-            <div className="sweep-rule-delay">
-              <label>Sweep delay</label>
-              <select
-                value={String(delayHours)}
-                onChange={(e) => setDelayHours(Number(e.target.value))}
-              >
-                <option value="1">1 hour</option>
-                <option value="6">6 hours</option>
-                <option value="12">12 hours</option>
-                <option value="24">24 hours</option>
-                <option value="48">48 hours</option>
-                <option value="168">7 days</option>
-              </select>
-            </div>
-          )}
+          {/* Delay dropdown */}
+          <div className="sweep-rule-delay">
+            <label>Delay before {isDanger ? 'deleting' : 'archiving'}</label>
+            <select
+              value={String(delayHours)}
+              onChange={(e) => setDelayHours(Number(e.target.value))}
+            >
+              <option value="1">1 hour</option>
+              <option value="6">6 hours</option>
+              <option value="12">12 hours</option>
+              <option value="24">24 hours</option>
+              <option value="48">48 hours</option>
+              <option value="168">7 days</option>
+            </select>
+          </div>
         </div>
         {/* Footer */}
         <div className="criteria-footer">

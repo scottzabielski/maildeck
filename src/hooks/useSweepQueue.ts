@@ -113,7 +113,7 @@ export function useAddToSweepQueue() {
           email_id: emailId,
           sweep_rule_id: sweepRuleId || null,
           scheduled_at: scheduledAt,
-          action: action === 'alwaysDelete' ? 'delete' : 'archive',
+          action: action === 'delete' ? 'delete' : 'archive',
           executed: false,
         })
         .select()

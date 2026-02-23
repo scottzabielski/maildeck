@@ -115,10 +115,10 @@ const SWEEP_EMAILS_INIT: SweepEmail[] = [
 ];
 
 const SWEEP_RULES: SweepRule[] = [
-  { id: 'sr1', name: 'Marketing emails', detail: 'Auto-archive after 24h if unread', enabled: true, sender: null, action: 'alwaysSweep', delayHours: 24 },
-  { id: 'sr2', name: 'Social notifications', detail: 'Auto-archive after 12h if unread', enabled: true, sender: null, action: 'alwaysSweep', delayHours: 12 },
-  { id: 'sr3', name: 'Promotional offers', detail: 'Auto-archive after 6h if unread', enabled: false, sender: null, action: 'alwaysSweep', delayHours: 6 },
-  { id: 'sr4', name: 'Automated reports', detail: 'Auto-archive after 48h if unread', enabled: true, sender: null, action: 'alwaysSweep', delayHours: 48 },
+  { id: 'sr1', name: 'Marketing emails', detail: 'Auto-archive after 24h', enabled: true, sender: null, action: 'archive', delayHours: 24 },
+  { id: 'sr2', name: 'Social notifications', detail: 'Auto-archive after 12h', enabled: true, sender: null, action: 'archive', delayHours: 12 },
+  { id: 'sr3', name: 'Promotional offers', detail: 'Auto-delete after 6h', enabled: false, sender: null, action: 'delete', delayHours: 6 },
+  { id: 'sr4', name: 'Automated reports', detail: 'Auto-archive after 48h', enabled: true, sender: null, action: 'archive', delayHours: 48 },
 ];
 
 // ========================================
@@ -374,30 +374,13 @@ export const useStore = create<StoreState>((set, get) => ({
     const delaySec = delayHours * 3600;
     set(s => {
       const matching = s.emails.filter(e => e.sender === sender);
-      if (action === 'moveAllToSweep' || action === 'alwaysSweep') {
-        return {
-          sweepEmails: [
-            ...s.sweepEmails,
-            ...matching.map(e => ({ id: e.id, accountId: e.accountId, sender: e.sender, subject: e.subject, sweepSeconds: delaySec, exempted: false })),
-          ].sort((a, b) => a.sweepSeconds - b.sweepSeconds),
-        };
-      }
-      if (action === 'keepLatest') {
-        const sorted = [...matching].sort((a, b) => b.time - a.time);
-        const rest = sorted.slice(1);
-        return {
-          sweepEmails: [
-            ...s.sweepEmails,
-            ...rest.map(e => ({ id: e.id, accountId: e.accountId, sender: e.sender, subject: e.subject, sweepSeconds: delaySec, exempted: false })),
-          ].sort((a, b) => a.sweepSeconds - b.sweepSeconds),
-        };
-      }
-      if (action === 'alwaysDelete') {
-        return {
-          emails: s.emails.filter(e => e.sender !== sender),
-        };
-      }
-      return {};
+      const alreadyInSweep = new Set(s.sweepEmails.map(e => e.id));
+      const newSweepItems = matching
+        .filter(e => !alreadyInSweep.has(e.id))
+        .map(e => ({ id: e.id, accountId: e.accountId, sender: e.sender, subject: e.subject, sweepSeconds: delaySec, exempted: false }));
+      return {
+        sweepEmails: [...s.sweepEmails, ...newSweepItems].sort((a, b) => a.sweepSeconds - b.sweepSeconds),
+      };
     });
   },
 
