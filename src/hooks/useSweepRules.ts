@@ -8,6 +8,8 @@ export interface DbSweepRule {
   detail: string | null;
   is_enabled: boolean;
   sender_pattern: string | null;
+  criteria: { field: string; op: string; value: string }[];
+  criteria_logic: 'and' | 'or';
   action: string;
   delay_hours: number;
 }

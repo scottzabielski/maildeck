@@ -142,6 +142,16 @@ function SettingsColumns({ columns }: { columns: ColumnType[] }) {
 // ========================================
 // SettingsSweepRules
 // ========================================
+function formatCriteriaSummary(rule: SweepRule): string {
+  if (!rule.criteria || rule.criteria.length === 0) return rule.name;
+  const joiner = rule.criteriaLogic === 'and' ? ' AND ' : ' OR ';
+  return rule.criteria.map(c => {
+    const fieldLabel = { from: 'From', to: 'To', subject: 'Subject', body: 'Body', label: 'Label' }[c.field] || c.field;
+    const opLabel = c.op.replace('_', ' ');
+    return `${fieldLabel} ${opLabel} "${c.value}"`;
+  }).join(joiner);
+}
+
 function SettingsSweepRules({ sweepRules, toggleSweepRule }: { sweepRules: SweepRule[]; toggleSweepRule: (id: string) => void }) {
   const { sweepDelayHours, setSweepDelayHours } = useStore();
   return (
@@ -179,9 +189,13 @@ function SettingsSweepRules({ sweepRules, toggleSweepRule }: { sweepRules: Sweep
                 onClick={() => toggleSweepRule(rule.id)}
               />
             </div>
+            <div className="sweep-rule-detail">
+              {formatCriteriaSummary(rule)}
+            </div>
             <div className="sweep-rule-detail">{rule.detail}</div>
             <div className="sweep-rule-meta">
               <span className="sweep-rule-tag">{rule.enabled ? 'active' : 'paused'}</span>
+              <span className="sweep-rule-tag">{rule.action}</span>
               <span className="sweep-rule-tag">all accounts</span>
             </div>
           </div>

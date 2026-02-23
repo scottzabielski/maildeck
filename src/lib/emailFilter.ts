@@ -55,6 +55,8 @@ function matchSingleCriterion(
     }
     case 'snippet':
       return matchOp(email.snippet.toLowerCase(), op, v);
+    case 'body':
+      return matchOp(email.snippet.toLowerCase(), op, v);
     default:
       return false;
   }
@@ -64,11 +66,15 @@ function matchOp(haystack: string, op: string, needle: string): boolean {
   switch (op) {
     case 'contains':
       return haystack.includes(needle);
+    case 'not_contains':
+      return !haystack.includes(needle);
     case 'equals':
       return haystack === needle;
     case 'startsWith':
+    case 'starts_with':
       return haystack.startsWith(needle);
     case 'endsWith':
+    case 'ends_with':
       return haystack.endsWith(needle);
     default:
       return haystack.includes(needle);

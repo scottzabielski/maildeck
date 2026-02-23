@@ -1,9 +1,10 @@
 import { create } from 'zustand';
 import type {
-  Account, View, Column, Email, SweepEmail, SweepRule,
+  Account, View, Column, Criterion, Email, SweepEmail, SweepRule,
   ContextMenuState, SelectedEmailState, UndoAction,
 } from '../types/index.ts';
 import { fireEmailAction } from '../lib/emailActions.ts';
+import { emailMatchesCriteria } from '../lib/emailFilter.ts';
 
 // ========================================
 // MOCK DATA
@@ -115,10 +116,10 @@ const SWEEP_EMAILS_INIT: SweepEmail[] = [
 ];
 
 const SWEEP_RULES: SweepRule[] = [
-  { id: 'sr1', name: 'Marketing emails', detail: 'Auto-archive after 24h', enabled: true, sender: null, action: 'archive', delayHours: 24 },
-  { id: 'sr2', name: 'Social notifications', detail: 'Auto-archive after 12h', enabled: true, sender: null, action: 'archive', delayHours: 12 },
-  { id: 'sr3', name: 'Promotional offers', detail: 'Auto-delete after 6h', enabled: false, sender: null, action: 'delete', delayHours: 6 },
-  { id: 'sr4', name: 'Automated reports', detail: 'Auto-archive after 48h', enabled: true, sender: null, action: 'archive', delayHours: 48 },
+  { id: 'sr1', name: 'Marketing emails', detail: 'Auto-archive after 24h', enabled: true, criteria: [{ field: 'from', op: 'contains', value: 'marketing' }], criteriaLogic: 'and', action: 'archive', delayHours: 24 },
+  { id: 'sr2', name: 'Social notifications', detail: 'Auto-archive after 12h', enabled: true, criteria: [{ field: 'from', op: 'contains', value: 'notification' }], criteriaLogic: 'and', action: 'archive', delayHours: 12 },
+  { id: 'sr3', name: 'Promotional offers', detail: 'Auto-delete after 6h', enabled: false, criteria: [{ field: 'subject', op: 'contains', value: 'offer' }], criteriaLogic: 'and', action: 'delete', delayHours: 6 },
+  { id: 'sr4', name: 'Automated reports', detail: 'Auto-archive after 48h', enabled: true, criteria: [{ field: 'from', op: 'contains', value: 'report' }], criteriaLogic: 'and', action: 'archive', delayHours: 48 },
 ];
 
 // ========================================
@@ -127,6 +128,9 @@ const SWEEP_RULES: SweepRule[] = [
 export interface SweepRuleEditorState {
   emailId: string;
   sender: string;
+  senderEmail: string;
+  subject: string;
+  toEmail: string;
   columnId: string | null;
 }
 
@@ -177,7 +181,7 @@ export interface StoreState {
   openSweepRuleEditor: (emailId: string) => void;
   closeSweepRuleEditor: () => void;
   addSweepRule: (rule: Omit<SweepRule, 'id' | 'enabled'>) => void;
-  applySweepAction: (sender: string, action: string, delayHours: number) => void;
+  applySweepAction: (criteria: Criterion[], criteriaLogic: 'and' | 'or', action: string, delayHours: number) => void;
   addNewEmail: (email: Partial<Email> & Pick<Email, 'id' | 'columnId' | 'accountId' | 'sender' | 'subject' | 'snippet' | 'time' | 'unread'>) => void;
   tickSweepCountdowns: () => void;
 
@@ -366,7 +370,15 @@ export const useStore = create<StoreState>((set, get) => ({
   openSweepRuleEditor: (emailId) => {
     const email = get().emails.find(e => e.id === emailId);
     if (!email) return;
-    set({ sweepRuleEditor: { emailId, sender: email.sender, columnId: email.columnId || null } });
+    const account = get().accounts.find(a => a.id === email.accountId);
+    set({ sweepRuleEditor: {
+      emailId,
+      sender: email.sender,
+      senderEmail: email.senderEmail || '',
+      subject: email.subject,
+      toEmail: account?.email || '',
+      columnId: email.columnId || null,
+    } });
   },
   closeSweepRuleEditor: () => set({ sweepRuleEditor: null }),
 
@@ -374,10 +386,10 @@ export const useStore = create<StoreState>((set, get) => ({
     sweepRules: [...s.sweepRules, { ...rule, id: `sr-${Date.now()}`, enabled: true }],
   })),
 
-  applySweepAction: (sender, action, delayHours) => {
+  applySweepAction: (criteria, criteriaLogic, action, delayHours) => {
     const delaySec = delayHours * 3600;
     set(s => {
-      const matching = s.emails.filter(e => e.sender === sender);
+      const matching = s.emails.filter(e => emailMatchesCriteria(e, criteria, criteriaLogic));
       const alreadyInSweep = new Set(s.sweepEmails.map(e => e.id));
       const newSweepItems = matching
         .filter(e => !alreadyInSweep.has(e.id))

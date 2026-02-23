@@ -54,7 +54,8 @@ export type SweepRule = {
   name: string;
   detail: string;
   enabled: boolean;
-  sender: string | null;
+  criteria: Criterion[];
+  criteriaLogic: 'and' | 'or';
   action: string;
   delayHours: number;
 };

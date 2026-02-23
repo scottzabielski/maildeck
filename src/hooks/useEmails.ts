@@ -36,8 +36,7 @@ export function useEmails(userId: string | undefined) {
         .eq('user_id', userId)
         .eq('is_archived', false)
         .eq('is_deleted', false)
-        .order('received_at', { ascending: false })
-        .limit(500);
+        .order('received_at', { ascending: false });
       if (error) throw error;
       return data as DbEmail[];
     },

@@ -1,12 +1,19 @@
 import { LayoutGroup, AnimatePresence, Reorder } from 'framer-motion';
+import { Icons } from './ui/Icons.tsx';
 import { Column } from './Column.tsx';
 import { SweepColumn } from './SweepColumn.tsx';
 import { EmailViewer } from './EmailViewer.tsx';
 import { useStore } from '../store/index.ts';
 
 export function StreamsLayout() {
-  const { columns, reorderColumns, selectedEmail } = useStore();
+  const { columns, reorderColumns, selectedEmail, setSettingsSection } = useStore();
+  const toggleSettings = useStore(s => s.toggleSettings);
   const isViewing = selectedEmail && selectedEmail.viewMode === 'streams';
+
+  const handleAddColumn = () => {
+    setSettingsSection('columns');
+    toggleSettings();
+  };
 
   if (isViewing) {
     const sourceCol = columns.find(c => c.id === selectedEmail.sourceColumnId);
@@ -45,6 +52,11 @@ export function StreamsLayout() {
               <Column column={col} />
             </Reorder.Item>
           ))}
+          <div className="add-column-area">
+            <button className="add-column-btn" onClick={handleAddColumn} title="Add column">
+              <Icons.Plus />
+            </button>
+          </div>
         </Reorder.Group>
         <SweepColumn key="sweep" />
       </div>

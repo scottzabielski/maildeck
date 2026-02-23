@@ -75,7 +75,8 @@ export function useSyncStore() {
       name: r.name,
       detail: r.detail || '',
       enabled: r.is_enabled,
-      sender: r.sender_pattern,
+      criteria: r.criteria || (r.sender_pattern ? [{ field: 'from', op: 'contains', value: r.sender_pattern }] : []),
+      criteriaLogic: r.criteria_logic || 'and',
       action: r.action,
       delayHours: r.delay_hours,
     }));

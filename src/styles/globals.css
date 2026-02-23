@@ -257,9 +257,7 @@ button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 .deck-layout {
   display: flex;
   height: calc(100% - var(--topbar-height));
-  overflow-x: auto;
-  overflow-y: hidden;
-  scroll-snap-type: x proximity;
+  overflow: hidden;
   gap: 1px;
   background: var(--border-subtle);
 }
@@ -476,6 +474,10 @@ button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 /* ========================================
    SWEEP COLUMN
    ======================================== */
+.column.sweep {
+  flex-shrink: 0;
+}
+
 .column.sweep .column-header {
   border-top-color: var(--red);
 }
@@ -1425,8 +1427,46 @@ button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
   padding: 0;
   margin: 0;
   gap: 1px;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x proximity;
 }
 .column-reorder-item { list-style: none; }
+
+.add-column-area {
+  flex: 1;
+  min-width: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.add-column-btn {
+  width: 144px;
+  height: 144px;
+  border-radius: 50%;
+  border: 2px dashed var(--border-subtle);
+  background: transparent;
+  color: var(--text-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.add-column-btn svg {
+  width: 60px;
+  height: 60px;
+}
+
+.add-column-btn:hover {
+  border-color: var(--text-secondary);
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+}
 .column-header { cursor: grab; }
 .column-header:active { cursor: grabbing; }
 .column-drag-handle {

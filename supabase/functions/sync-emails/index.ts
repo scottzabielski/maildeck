@@ -5,7 +5,7 @@ import { corsHeaders } from '../_shared/cors.ts';
  * Email sync Edge Function.
  *
  * Modes:
- * - full: Initial sync — fetch recent emails (last 30 days / 500 max)
+ * - full: Initial sync — fetch all inbox emails
  * - incremental: Fetch only new/changed emails since last sync
  *
  * Called by:
@@ -140,15 +140,14 @@ async function gmailFullSync(
   const userId = account.user_id as string;
   const accountId = account.id as string;
 
-  // Fetch message IDs (last 30 days, max 500)
-  const after = Math.floor((Date.now() - 30 * 86400000) / 1000);
+  // Fetch all inbox message IDs
   let messageIds: string[] = [];
   let pageToken: string | undefined;
 
   do {
     const params = new URLSearchParams({
       maxResults: '100',
-      q: `after:${after}`,
+      q: 'in:inbox',
     });
     if (pageToken) params.set('pageToken', pageToken);
 
@@ -159,9 +158,7 @@ async function gmailFullSync(
       messageIds.push(...data.messages.map((m: { id: string }) => m.id));
     }
     pageToken = data.nextPageToken;
-  } while (pageToken && messageIds.length < 500);
-
-  messageIds = messageIds.slice(0, 500);
+  } while (pageToken);
 
   // Fetch message metadata sequentially in small batches to avoid rate limits
   let synced = 0;
@@ -341,7 +338,7 @@ async function outlookFullSync(
   let synced = 0;
   let url: string | null = `https://graph.microsoft.com/v1.0/me/messages?$top=100&$orderby=receivedDateTime desc&$select=id,conversationId,from,toRecipients,subject,bodyPreview,receivedDateTime,isRead,flag,categories,parentFolderId`;
 
-  while (url && synced < 500) {
+  while (url) {
     const res = await outlookFetch(accessToken, url);
     const data = await res.json();
 
