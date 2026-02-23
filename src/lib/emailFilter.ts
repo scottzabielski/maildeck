@@ -1,4 +1,5 @@
 import type { Criterion, Email } from '../types/index.ts';
+import { useStore } from '../store/index.ts';
 
 /**
  * Check whether an email matches a set of column filter criteria.
@@ -9,6 +10,7 @@ import type { Criterion, Email } from '../types/index.ts';
  *   - "subject" → email.subject
  *   - "label"   → email.labels (if available)
  *   - "snippet" → email.snippet
+ *   - "stream"  → evaluates referenced column's criteria recursively
  *
  * Operations:
  *   - "contains" → case-insensitive substring match
@@ -21,9 +23,18 @@ export function emailMatchesCriteria(
   criteria: Criterion[],
   logic: 'and' | 'or',
 ): boolean {
+  return emailMatchesCriteriaInternal(email, criteria, logic, undefined);
+}
+
+function emailMatchesCriteriaInternal(
+  email: Email,
+  criteria: Criterion[],
+  logic: 'and' | 'or',
+  visitedStreams: Set<string> | undefined,
+): boolean {
   if (criteria.length === 0) return false;
 
-  const matches = criteria.map((c) => matchSingleCriterion(email, c));
+  const matches = criteria.map((c) => matchSingleCriterion(email, c, visitedStreams));
 
   return logic === 'and'
     ? matches.every(Boolean)
@@ -33,6 +44,7 @@ export function emailMatchesCriteria(
 function matchSingleCriterion(
   email: Email,
   criterion: Criterion,
+  visitedStreams: Set<string> | undefined,
 ): boolean {
   const { field, op, value } = criterion;
   // Strip surrounding quotes if present (e.g. "quoted phrase" → quoted phrase)
@@ -59,6 +71,15 @@ function matchSingleCriterion(
       return matchOp(email.snippet.toLowerCase(), op, v);
     case 'body':
       return matchOp(email.snippet.toLowerCase(), op, v);
+    case 'stream': {
+      const cols = useStore.getState().columns;
+      const target = cols.find(c => c.id === value || c.name.toLowerCase() === v);
+      if (!target || target.criteria.length === 0) return false;
+      if (visitedStreams?.has(target.id)) return false;
+      const visited = new Set(visitedStreams);
+      visited.add(target.id);
+      return emailMatchesCriteriaInternal(email, target.criteria, target.criteriaLogic, visited);
+    }
     default:
       return false;
   }

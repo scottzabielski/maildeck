@@ -10,7 +10,7 @@ import type { Criterion } from '../types/index.ts';
 const useMockData = import.meta.env.VITE_USE_MOCK_DATA === 'true';
 
 export function SweepRuleEditor() {
-  const { sweepRuleEditor, closeSweepRuleEditor, addSweepRule, applySweepAction, sweepDelayHours, emails } = useStore();
+  const { sweepRuleEditor, closeSweepRuleEditor, addSweepRule, applySweepAction, sweepDelayHours, emails, columns } = useStore();
   const { user } = useAuth();
   const createSweepRuleMutation = useCreateSweepRule();
   const addToSweepQueueMutation = useAddToSweepQueue();
@@ -40,6 +40,7 @@ export function SweepRuleEditor() {
       case 'from': return sweepRuleEditor.senderEmail || sweepRuleEditor.sender;
       case 'to': return sweepRuleEditor.toEmail;
       case 'subject': return sweepRuleEditor.subject;
+      case 'stream': return sweepRuleEditor.columnId || '';
       default: return '';
     }
   };
@@ -60,8 +61,8 @@ export function SweepRuleEditor() {
       if (key === 'field') {
         const wasEmpty = !r.value.trim();
         const wasPrefill = prefillValues.has(r.value);
-        const newValue = (wasEmpty || wasPrefill) ? prefillForField(val) : r.value;
-        return { ...r, field: val, value: newValue };
+        const newValue = (wasEmpty || wasPrefill) ? prefillForField(val) : (val === 'stream' ? '' : r.value);
+        return { ...r, field: val, op: val === 'stream' ? 'equals' : r.op, value: newValue };
       }
       return { ...r, [key]: val };
     }));
@@ -71,6 +72,10 @@ export function SweepRuleEditor() {
     return criteria
       .filter(c => c.value.trim())
       .map(c => {
+        if (c.field === 'stream') {
+          const col = columns.find(col => col.id === c.value);
+          return `Stream: "${col?.name || c.value}"`;
+        }
         const fieldLabel = { from: 'From', to: 'To', subject: 'Subject', body: 'Body', label: 'Label' }[c.field] || c.field;
         return `${fieldLabel} ${c.op.replace('_', ' ')} "${c.value}"`;
       })
@@ -184,24 +189,45 @@ export function SweepRuleEditor() {
                   <option value="subject">Subject</option>
                   <option value="body">Body</option>
                   <option value="label">Label</option>
+                  <option value="stream">Stream</option>
                 </select>
-                <select
-                  className="filter-select"
-                  value={row.op}
-                  onChange={(e) => updateRow(i, 'op', e.target.value)}
-                >
-                  <option value="contains">contains</option>
-                  <option value="not_contains">not contains</option>
-                  <option value="equals">equals</option>
-                  <option value="starts_with">starts with</option>
-                  <option value="ends_with">ends with</option>
-                </select>
-                <input
-                  className="filter-input"
-                  value={row.value}
-                  onChange={(e) => updateRow(i, 'value', e.target.value)}
-                  placeholder="Value..."
-                />
+                {row.field === 'stream' ? (
+                  <span className="filter-select" style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--text-tertiary)', fontStyle: 'italic', cursor: 'default' }}>
+                    is part of
+                  </span>
+                ) : (
+                  <select
+                    className="filter-select"
+                    value={row.op}
+                    onChange={(e) => updateRow(i, 'op', e.target.value)}
+                  >
+                    <option value="contains">contains</option>
+                    <option value="not_contains">not contains</option>
+                    <option value="equals">equals</option>
+                    <option value="starts_with">starts with</option>
+                    <option value="ends_with">ends with</option>
+                  </select>
+                )}
+                {row.field === 'stream' ? (
+                  <select
+                    className="filter-select"
+                    style={{ flex: 1 }}
+                    value={row.value}
+                    onChange={(e) => updateRow(i, 'value', e.target.value)}
+                  >
+                    <option value="">Select stream...</option>
+                    {columns.map(col => (
+                      <option key={col.id} value={col.id}>{col.icon} {col.name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    className="filter-input"
+                    value={row.value}
+                    onChange={(e) => updateRow(i, 'value', e.target.value)}
+                    placeholder="Value..."
+                  />
+                )}
                 <button
                   className="filter-remove-btn"
                   onClick={() => removeRow(i)}

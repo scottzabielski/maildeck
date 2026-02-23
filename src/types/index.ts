@@ -24,6 +24,7 @@ export type Column = {
   accent: string;
   criteria: Criterion[];
   criteriaLogic: 'and' | 'or';
+  enabled: boolean;
 };
 
 export type Email = {

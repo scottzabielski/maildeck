@@ -1,9 +1,11 @@
+import { useRef } from 'react';
 import { Reorder } from 'framer-motion';
 import { Icons } from './ui/Icons.tsx';
 import { useStore } from '../store/index.ts';
 
 export function TopBar() {
   const { views, activeViewId, setActiveView, accounts, disabledAccountIds, toggleAccount, toggleSettings, reorderAccounts } = useStore();
+  const draggedRef = useRef(false);
 
   return (
     <div className="topbar">
@@ -36,7 +38,14 @@ export function TopBar() {
             value={a}
             as="button"
             className={`account-badge ${disabledAccountIds.has(a.id) ? 'disabled' : ''}`}
-            onClick={() => toggleAccount(a.id)}
+            onClick={() => {
+              if (draggedRef.current) {
+                draggedRef.current = false;
+                return;
+              }
+              toggleAccount(a.id);
+            }}
+            onDragStart={() => { draggedRef.current = true; }}
             whileDrag={{ scale: 1.05, boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }}
           >
             <span className="account-dot" style={{ background: a.color }} />

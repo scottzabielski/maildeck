@@ -10,6 +10,7 @@ export interface DbColumn {
   criteria: Array<{ field: string; op: string; value: string }>;
   criteria_logic: 'and' | 'or';
   sort_order: number;
+  is_enabled: boolean;
 }
 
 export function useColumns(userId: string | undefined) {
@@ -43,7 +44,31 @@ export function useCreateColumn() {
       if (error) throw error;
       return data as DbColumn;
     },
-    onSuccess: (_data, variables) => {
+    onMutate: async (variables) => {
+      await queryClient.cancelQueries({ queryKey: ['columns', variables.user_id] });
+      const previous = queryClient.getQueryData<DbColumn[]>(['columns', variables.user_id]);
+      // Optimistically add the new column with a temporary ID
+      const optimistic: DbColumn = { ...variables, id: `temp-${Date.now()}` } as DbColumn;
+      queryClient.setQueryData<DbColumn[]>(['columns', variables.user_id],
+        [...(previous || []), optimistic]
+      );
+      return { previous, userId: variables.user_id };
+    },
+    onSuccess: (data, variables) => {
+      // Replace the optimistic entry with the real server data
+      const current = queryClient.getQueryData<DbColumn[]>(['columns', variables.user_id]);
+      if (current) {
+        queryClient.setQueryData<DbColumn[]>(['columns', variables.user_id],
+          current.map(c => c.id.startsWith('temp-') ? data : c)
+        );
+      }
+    },
+    onError: (_err, _variables, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(['columns', context.userId], context.previous);
+      }
+    },
+    onSettled: (_data, _error, variables) => {
       queryClient.invalidateQueries({ queryKey: ['columns', variables.user_id] });
     },
   });

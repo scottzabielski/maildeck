@@ -382,6 +382,21 @@ button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
   background: var(--column-accent, var(--blue));
 }
 
+.email-card.has-sweep {
+  background: rgba(220, 38, 38, 0.04);
+}
+
+.email-card.has-sweep::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  border-radius: 1px;
+  background: #dc2626;
+}
+
 .email-card-top {
   display: flex;
   align-items: center;
@@ -792,6 +807,35 @@ button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
   background: rgba(37, 99, 235, 0.1);
 }
 
+.column-icon-custom {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  border-radius: var(--radius-sm);
+  border: 1.5px dashed var(--border-subtle);
+  background: transparent;
+  color: var(--text-primary);
+  text-align: center;
+  cursor: text;
+  padding: 0;
+  outline: none;
+  transition: all 0.15s ease;
+}
+
+.column-icon-custom:hover {
+  border-color: var(--text-tertiary);
+  background: var(--bg-surface);
+}
+
+.column-icon-custom:focus {
+  border-color: var(--blue);
+  border-style: solid;
+  background: rgba(37, 99, 235, 0.1);
+}
+
 .column-name-input {
   flex: 1;
   font-family: var(--font-display);
@@ -838,6 +882,41 @@ button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 .column-accent-option.selected {
   border-color: var(--text-primary);
   box-shadow: 0 0 0 2px var(--bg-raised), 0 0 0 4px currentColor;
+}
+
+.column-accent-custom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  cursor: pointer;
+}
+
+.column-accent-custom input[type="color"] {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px dashed var(--border-subtle);
+  padding: 0;
+  cursor: pointer;
+  background: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+  overflow: hidden;
+}
+
+.column-accent-custom input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.column-accent-custom input[type="color"]::-webkit-color-swatch {
+  border: none;
+  border-radius: 50%;
+}
+
+.column-accent-custom input[type="color"]:hover {
+  transform: scale(1.15);
+  transition: transform 0.15s ease;
 }
 
 .filter-group {

@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useStore } from '../store/index.ts';
 import { useAuth } from './useAuth.ts';
 import { useProfile, useUpdateProfile } from './useProfile.ts';
-import { useColumns, useReorderColumns } from './useColumns.ts';
+import { useColumns, useReorderColumns, useCreateColumn, useUpdateColumn, useDeleteColumn } from './useColumns.ts';
 import { useSweepRules } from './useSweepRules.ts';
 import { useEmailAccounts, useReorderEmailAccounts, useUpdateEmailAccount } from './useEmailAccounts.ts';
 import { useEmails, useSyncAccount } from './useEmails.ts';
@@ -31,6 +31,9 @@ export function useSyncStore() {
 
   const updateProfileMutation = useUpdateProfile();
   const reorderColumnsMutation = useReorderColumns();
+  const createColumnMutation = useCreateColumn();
+  const updateColumnMutation = useUpdateColumn();
+  const deleteColumnMutation = useDeleteColumn();
   const reorderAccountsMutation = useReorderEmailAccounts();
   const updateAccountMutation = useUpdateEmailAccount();
   const syncAccountMutation = useSyncAccount();
@@ -63,6 +66,7 @@ export function useSyncStore() {
       accent: c.accent,
       criteria: c.criteria,
       criteriaLogic: c.criteria_logic,
+      enabled: c.is_enabled,
     }));
     useStore.setState({ columns: mapped });
   }, [dbColumns]);
@@ -191,6 +195,35 @@ export function useSyncStore() {
         return dc ? { ...dc, sort_order: i } : null;
       }).filter(Boolean) as typeof dbColumns;
       reorderColumnsMutation.mutate({ columns: dbCols, userId });
+    },
+    persistColumnCreate: (column: Column) => {
+      if (useMockData || !userId) return;
+      const sortOrder = useStore.getState().columns.length - 1;
+      createColumnMutation.mutate({
+        user_id: userId,
+        name: column.name,
+        icon: column.icon,
+        accent: column.accent,
+        criteria: column.criteria,
+        criteria_logic: column.criteriaLogic,
+        sort_order: Math.max(0, sortOrder),
+        is_enabled: column.enabled,
+      });
+    },
+    persistColumnUpdate: (columnId: string, updates: Partial<Omit<Column, 'id'>>) => {
+      if (useMockData || !userId) return;
+      const dbUpdates: Record<string, unknown> = {};
+      if (updates.name !== undefined) dbUpdates.name = updates.name;
+      if (updates.icon !== undefined) dbUpdates.icon = updates.icon;
+      if (updates.accent !== undefined) dbUpdates.accent = updates.accent;
+      if (updates.criteria !== undefined) dbUpdates.criteria = updates.criteria;
+      if (updates.criteriaLogic !== undefined) dbUpdates.criteria_logic = updates.criteriaLogic;
+      if (updates.enabled !== undefined) dbUpdates.is_enabled = updates.enabled;
+      updateColumnMutation.mutate({ id: columnId, user_id: userId, ...dbUpdates } as any);
+    },
+    persistColumnDelete: (columnId: string) => {
+      if (useMockData || !userId) return;
+      deleteColumnMutation.mutate({ id: columnId, userId });
     },
     persistAccountReorder: (accounts: Account[]) => {
       if (useMockData || !userId || !dbAccounts) return;

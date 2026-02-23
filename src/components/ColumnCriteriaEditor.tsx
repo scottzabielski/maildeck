@@ -44,13 +44,19 @@ export function ColumnCriteriaEditor() {
   const addRow = () => setCriteria([...criteria, { field: 'from', op: 'contains', value: '' }]);
   const removeRow = (i: number) => setCriteria(criteria.filter((_, idx) => idx !== i));
   const updateRow = (i: number, key: keyof Criterion, val: string) =>
-    setCriteria(criteria.map((r, idx) => idx === i ? { ...r, [key]: val } : r));
+    setCriteria(criteria.map((r, idx) => {
+      if (idx !== i) return r;
+      if (key === 'field' && val === 'stream') {
+        return { ...r, field: val, op: 'equals', value: '' };
+      }
+      return { ...r, [key]: val };
+    }));
 
   const handleApply = () => {
     const validCriteria = criteria.filter(c => c.value.trim());
     if (isCreating) {
       if (!name.trim()) return;
-      addColumn({ name: name.trim(), icon, accent, criteria: validCriteria, criteriaLogic: logic });
+      addColumn({ name: name.trim(), icon, accent, criteria: validCriteria, criteriaLogic: logic, enabled: true });
     } else if (column) {
       updateColumn(column.id, { name: name.trim() || column.name, icon, accent, criteria: validCriteria, criteriaLogic: logic });
     }
@@ -64,7 +70,7 @@ export function ColumnCriteriaEditor() {
       <div className="criteria-editor">
         <div className="criteria-header">
           <span className="criteria-title">
-            {isCreating ? 'New Column' : `${column!.icon} ${column!.name} — Filters`}
+            {isCreating ? 'New Stream' : `${column!.icon} ${column!.name} — Filters`}
           </span>
           <button className="criteria-close" onClick={closeCriteriaEditor}>
             <Icons.Close />
@@ -85,13 +91,26 @@ export function ColumnCriteriaEditor() {
                       {ic}
                     </button>
                   ))}
+                  <input
+                    className="column-icon-custom"
+                    value={ICONS.includes(icon) ? '' : icon}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      // Take only the last grapheme cluster (emoji) entered
+                      const segments = [...new Intl.Segmenter().segment(val)];
+                      if (segments.length > 0) setIcon(segments[segments.length - 1].segment);
+                    }}
+                    placeholder="✏️"
+                    title="Type any emoji"
+                    maxLength={4}
+                  />
                 </div>
                 <input
                   ref={nameInputRef}
                   className="column-name-input"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="Column name..."
+                  placeholder="Stream name..."
                   onKeyDown={(e) => { if (e.key === 'Enter' && canApply) handleApply(); }}
                 />
               </div>
@@ -104,6 +123,14 @@ export function ColumnCriteriaEditor() {
                     onClick={() => setAccent(c)}
                   />
                 ))}
+                <label className="column-accent-custom" title="Pick any color">
+                  <input
+                    type="color"
+                    value={accent}
+                    onChange={(e) => setAccent(e.target.value)}
+                  />
+                  <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>custom</span>
+                </label>
               </div>
             </div>
           )}
@@ -121,7 +148,9 @@ export function ColumnCriteriaEditor() {
                 Click to toggle logic
               </span>
             </div>
-            {criteria.map((row, i) => (
+            {criteria.map((row, i) => {
+              const otherColumns = columns.filter(c => c.id !== editingColumnId);
+              return (
               <div key={i} className="filter-row">
                 <select
                   className="filter-select"
@@ -133,24 +162,45 @@ export function ColumnCriteriaEditor() {
                   <option value="subject">Subject</option>
                   <option value="label">Label</option>
                   <option value="body">Body</option>
+                  <option value="stream">Stream</option>
                 </select>
-                <select
-                  className="filter-select"
-                  value={row.op}
-                  onChange={(e) => updateRow(i, 'op', e.target.value)}
-                >
-                  <option value="contains">contains</option>
-                  <option value="not_contains">not contains</option>
-                  <option value="equals">equals</option>
-                  <option value="starts_with">starts with</option>
-                  <option value="ends_with">ends with</option>
-                </select>
-                <input
-                  className="filter-input"
-                  value={row.value}
-                  onChange={(e) => updateRow(i, 'value', e.target.value)}
-                  placeholder="Value..."
-                />
+                {row.field === 'stream' ? (
+                  <span className="filter-select" style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--text-tertiary)', fontStyle: 'italic', cursor: 'default' }}>
+                    is part of
+                  </span>
+                ) : (
+                  <select
+                    className="filter-select"
+                    value={row.op}
+                    onChange={(e) => updateRow(i, 'op', e.target.value)}
+                  >
+                    <option value="contains">contains</option>
+                    <option value="not_contains">not contains</option>
+                    <option value="equals">equals</option>
+                    <option value="starts_with">starts with</option>
+                    <option value="ends_with">ends with</option>
+                  </select>
+                )}
+                {row.field === 'stream' ? (
+                  <select
+                    className="filter-select"
+                    style={{ flex: 1 }}
+                    value={row.value}
+                    onChange={(e) => updateRow(i, 'value', e.target.value)}
+                  >
+                    <option value="">Select stream...</option>
+                    {otherColumns.map(col => (
+                      <option key={col.id} value={col.id}>{col.icon} {col.name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    className="filter-input"
+                    value={row.value}
+                    onChange={(e) => updateRow(i, 'value', e.target.value)}
+                    placeholder="Value..."
+                  />
+                )}
                 <button
                   className="filter-remove-btn"
                   onClick={() => removeRow(i)}
@@ -160,7 +210,8 @@ export function ColumnCriteriaEditor() {
                   <Icons.Minus />
                 </button>
               </div>
-            ))}
+              );
+            })}
             <button className="add-filter-btn" onClick={addRow}>
               <Icons.Plus /> Add condition
             </button>
@@ -174,7 +225,7 @@ export function ColumnCriteriaEditor() {
             disabled={!canApply}
             style={!canApply ? { opacity: 0.5, cursor: 'default' } : undefined}
           >
-            {isCreating ? 'Create Column' : 'Apply'}
+            {isCreating ? 'Create Stream' : 'Apply'}
           </button>
         </div>
       </div>

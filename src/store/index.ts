@@ -35,6 +35,7 @@ const COLUMNS: Column[] = [
       { field: 'from', op: 'contains', value: 'newsletter' },
     ],
     criteriaLogic: 'or',
+    enabled: true,
   },
   {
     id: 'github',
@@ -45,6 +46,7 @@ const COLUMNS: Column[] = [
       { field: 'from', op: 'contains', value: 'github.com' },
     ],
     criteriaLogic: 'and',
+    enabled: true,
   },
   {
     id: 'team',
@@ -56,6 +58,7 @@ const COLUMNS: Column[] = [
       { field: 'label', op: 'equals', value: 'internal' },
     ],
     criteriaLogic: 'or',
+    enabled: true,
   },
   {
     id: 'clients',
@@ -67,6 +70,7 @@ const COLUMNS: Column[] = [
       { field: 'from', op: 'contains', value: 'acme.co' },
     ],
     criteriaLogic: 'or',
+    enabled: true,
   },
 ];
 
@@ -169,6 +173,7 @@ export interface StoreState {
   addColumn: (column: Omit<Column, 'id'>) => void;
   removeColumn: (columnId: string) => void;
   updateColumn: (columnId: string, updates: Partial<Omit<Column, 'id'>>) => void;
+  toggleColumn: (columnId: string) => void;
   openContextMenu: (x: number, y: number, emailId: string, columnId: string) => void;
   closeContextMenu: () => void;
   selectEmail: (emailId: string, sourceColumnId: string, sourceAccountId: string) => void;
@@ -195,6 +200,9 @@ export interface StoreState {
   _persistSweepDelay?: (hours: number) => void;
   _persistColumnReorder?: (columns: Column[]) => void;
   _persistAccountReorder?: (accounts: Account[]) => void;
+  _persistColumnCreate?: (column: Column) => void;
+  _persistColumnUpdate?: (columnId: string, updates: Partial<Omit<Column, 'id'>>) => void;
+  _persistColumnDelete?: (columnId: string) => void;
 }
 
 // ========================================
@@ -259,18 +267,25 @@ export const useStore = create<StoreState>((set, get) => ({
     const id = `col-${Date.now()}`;
     const newCol = { ...column, id };
     set(s => ({ columns: [...s.columns, newCol], creatingColumn: false }));
-    // Persist column order after adding
-    get()._persistColumnReorder?.([...get().columns]);
+    get()._persistColumnCreate?.(newCol);
   },
   removeColumn: (columnId) => {
     set(s => ({ columns: s.columns.filter(c => c.id !== columnId) }));
-    get()._persistColumnReorder?.([...get().columns]);
+    get()._persistColumnDelete?.(columnId);
   },
   updateColumn: (columnId, updates) => {
     set(s => ({
       columns: s.columns.map(c => c.id === columnId ? { ...c, ...updates } : c),
     }));
-    get()._persistColumnReorder?.([...get().columns]);
+    const col = get().columns.find(c => c.id === columnId);
+    if (col) get()._persistColumnUpdate?.(columnId, updates);
+  },
+  toggleColumn: (columnId) => {
+    set(s => ({
+      columns: s.columns.map(c => c.id === columnId ? { ...c, enabled: !c.enabled } : c),
+    }));
+    const col = get().columns.find(c => c.id === columnId);
+    if (col) get()._persistColumnUpdate?.(columnId, { enabled: col.enabled });
   },
 
   openContextMenu: (x, y, emailId, columnId) => set({ contextMenu: { x, y, emailId, columnId } }),

@@ -4,15 +4,16 @@ import { Icons } from './ui/Icons.tsx';
 import { useStore } from '../store/index.ts';
 import { useAuth } from '../hooks/useAuth.ts';
 import { useDeleteSweepRule } from '../hooks/useSweepRules.ts';
+import { useDeleteColumn } from '../hooks/useColumns.ts';
 import { ConnectAccountFlow } from './settings/ConnectAccountFlow.tsx';
-import type { Account, Column as ColumnType, SweepRule } from '../types/index.ts';
+import type { Account, Column as ColumnType, Criterion, SweepRule } from '../types/index.ts';
 
 // ========================================
 // SETTINGS SECTIONS CONFIG
 // ========================================
 const SETTINGS_SECTIONS = [
   { id: 'accounts', name: 'Accounts', icon: '👤' },
-  { id: 'columns', name: 'Columns', icon: '📋' },
+  { id: 'columns', name: 'Streams', icon: '📋' },
   { id: 'sweep', name: 'Sweep Rules', icon: '🧹' },
   { id: 'notifications', name: 'Notifications', icon: '🔔' },
   { id: 'appearance', name: 'Appearance', icon: '🎨' },
@@ -114,29 +115,82 @@ function SettingsAccounts({ accounts }: { accounts: Account[] }) {
 // ========================================
 // SettingsColumns
 // ========================================
+function formatColumnCriteriaSummary(criteria: Criterion[], logic: 'and' | 'or'): string {
+  if (!criteria || criteria.length === 0) return 'No filters';
+  const joiner = logic === 'and' ? ' AND ' : ' OR ';
+  const columns = useStore.getState().columns;
+  return criteria.map(c => {
+    if (c.field === 'stream') {
+      const col = columns.find(col => col.id === c.value);
+      return `Stream: "${col?.name || c.value}"`;
+    }
+    const fieldLabel = { from: 'From', to: 'To', subject: 'Subject', body: 'Body', label: 'Label' }[c.field] || c.field;
+    const opLabel = c.op.replace('_', ' ');
+    return `${fieldLabel} ${opLabel} "${c.value}"`;
+  }).join(joiner);
+}
+
 function SettingsColumns({ columns }: { columns: ColumnType[] }) {
+  const { reorderColumns, openCriteriaEditor, openNewColumnEditor, toggleColumn } = useStore();
+  const { user } = useAuth();
+  const deleteMutation = useDeleteColumn();
+
+  const handleDelete = (columnId: string) => {
+    if (!user?.id) return;
+    deleteMutation.mutate({ id: columnId, userId: user.id });
+    useStore.setState(s => ({
+      columns: s.columns.filter(c => c.id !== columnId),
+    }));
+  };
+
   return (
     <>
-      <div className="settings-content-title">Columns</div>
-      <div className="settings-content-desc">Configure your deck columns, their order, and filter criteria.</div>
-      <div className="settings-card">
+      <div className="settings-content-title">Streams</div>
+      <div className="settings-content-desc">Configure your deck streams, their order, and filter criteria. Drag to reorder.</div>
+      <Reorder.Group
+        as="div"
+        axis="y"
+        values={columns}
+        onReorder={reorderColumns}
+        className="settings-card"
+      >
         {columns.map(col => (
-          <div key={col.id} className="settings-card-row" style={{ cursor: 'pointer' }}>
+          <Reorder.Item
+            key={col.id}
+            value={col}
+            as="div"
+            className="settings-card-row settings-account-draggable"
+            whileDrag={{ scale: 1.01, boxShadow: '0 4px 16px rgba(0,0,0,0.2)', zIndex: 10 }}
+          >
+            <span className="drag-handle-wrap"><Icons.DragHandle /></span>
             <span style={{ fontSize: '15px', width: '20px', textAlign: 'center' }}>{col.icon}</span>
-            <div style={{ flex: 1 }}>
+            <div
+              style={{ flex: 1, cursor: 'pointer' }}
+              onClick={() => openCriteriaEditor(col.id)}
+            >
               <div className="settings-account-name">{col.name}</div>
               <div className="settings-account-email">
-                {col.criteria.length} filter rule{col.criteria.length !== 1 ? 's' : ''}
+                {formatColumnCriteriaSummary(col.criteria, col.criteriaLogic)}
               </div>
             </div>
             <span style={{ width: '10px', height: '10px', borderRadius: '2px', background: col.accent }} />
-            <Icons.ChevronRight />
-          </div>
+            <button
+              className={`sweep-rule-toggle ${col.enabled !== false ? 'active' : ''}`}
+              onClick={() => toggleColumn(col.id)}
+            />
+            <button
+              className="sweep-rule-delete"
+              onClick={() => handleDelete(col.id)}
+              title="Delete stream"
+            >
+              <Icons.Close />
+            </button>
+          </Reorder.Item>
         ))}
-        <button className="settings-add-btn">
-          <Icons.Plus /> Add Column
+        <button className="settings-add-btn" onClick={() => openNewColumnEditor()}>
+          <Icons.Plus /> Add Stream
         </button>
-      </div>
+      </Reorder.Group>
     </>
   );
 }
@@ -147,7 +201,12 @@ function SettingsColumns({ columns }: { columns: ColumnType[] }) {
 function formatCriteriaSummary(rule: SweepRule): string {
   if (!rule.criteria || rule.criteria.length === 0) return rule.name;
   const joiner = rule.criteriaLogic === 'and' ? ' AND ' : ' OR ';
+  const columns = useStore.getState().columns;
   return rule.criteria.map(c => {
+    if (c.field === 'stream') {
+      const col = columns.find(col => col.id === c.value);
+      return `Stream: "${col?.name || c.value}"`;
+    }
     const fieldLabel = { from: 'From', to: 'To', subject: 'Subject', body: 'Body', label: 'Label' }[c.field] || c.field;
     const opLabel = c.op.replace('_', ' ');
     return `${fieldLabel} ${opLabel} "${c.value}"`;

@@ -33,7 +33,7 @@ export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, 
 
   return (
     <motion.div
-      className={`email-card ${email.unread ? 'unread' : ''} ${email.starred ? 'starred' : ''}${isSelected ? ' selected' : ''}`}
+      className={`email-card ${email.unread ? 'unread' : ''} ${email.starred ? 'starred' : ''}${isSelected ? ' selected' : ''}${hasSweep ? ' has-sweep' : ''}`}
       style={{ '--column-accent': accent } as React.CSSProperties}
       layout
       initial={{ opacity: 0, y: -8 }}

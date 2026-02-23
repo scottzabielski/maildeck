@@ -6,9 +6,16 @@ import { EmailViewer } from './EmailViewer.tsx';
 import { useStore } from '../store/index.ts';
 
 export function StreamsLayout() {
-  const { columns, reorderColumns, selectedEmail } = useStore();
+  const { columns: allColumns, reorderColumns, selectedEmail } = useStore();
   const openNewColumnEditor = useStore(s => s.openNewColumnEditor);
+  const columns = allColumns.filter(c => c.enabled !== false);
   const isViewing = selectedEmail && selectedEmail.viewMode === 'streams';
+
+  const handleReorder = (reordered: typeof columns) => {
+    // Merge reordered enabled columns with disabled ones (appended at end)
+    const disabledCols = allColumns.filter(c => c.enabled === false);
+    reorderColumns([...reordered, ...disabledCols]);
+  };
 
   const handleAddColumn = () => {
     openNewColumnEditor();
@@ -37,7 +44,7 @@ export function StreamsLayout() {
           as="div"
           axis="x"
           values={columns}
-          onReorder={reorderColumns}
+          onReorder={handleReorder}
           className="deck-columns-reorder"
         >
           {columns.map(col => (

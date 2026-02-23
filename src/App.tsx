@@ -73,7 +73,7 @@ function AppShell() {
   const selectedEmail = useStore(s => s.selectedEmail);
 
   // Sync Supabase data → Zustand store
-  const { persistTheme, persistSweepDelay, persistColumnReorder, persistAccountReorder, persistAccountRename } = useSyncStore();
+  const { persistTheme, persistSweepDelay, persistColumnReorder, persistColumnCreate, persistColumnUpdate, persistColumnDelete, persistAccountReorder, persistAccountRename } = useSyncStore();
 
   // Handle OAuth provider redirect (e.g. /settings/accounts?connected=gmail)
   useEffect(() => {
@@ -92,10 +92,13 @@ function AppShell() {
       _persistTheme: persistTheme,
       _persistSweepDelay: persistSweepDelay,
       _persistColumnReorder: persistColumnReorder,
+      _persistColumnCreate: persistColumnCreate,
+      _persistColumnUpdate: persistColumnUpdate,
+      _persistColumnDelete: persistColumnDelete,
       _persistAccountReorder: persistAccountReorder,
       _persistAccountRename: persistAccountRename,
     });
-  }, [persistTheme, persistSweepDelay, persistColumnReorder, persistAccountReorder, persistAccountRename]);
+  }, [persistTheme, persistSweepDelay, persistColumnReorder, persistColumnCreate, persistColumnUpdate, persistColumnDelete, persistAccountReorder, persistAccountRename]);
 
   // Escape key to close email viewer (only if no context menu is open)
   useEffect(() => {
