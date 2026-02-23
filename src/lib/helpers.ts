@@ -1,12 +1,25 @@
 export function formatTime(timestamp: number): string {
-  const diff = Date.now() - timestamp;
-  const m = Math.floor(diff / 60000);
-  if (m < 1) return 'now';
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h`;
-  const d = Math.floor(h / 24);
-  return `${d}d`;
+  const date = new Date(timestamp);
+  const now = new Date();
+
+  // Strip time to compare dates
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const emailDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const diffDays = Math.floor((today.getTime() - emailDay.getTime()) / 86400000);
+
+  if (diffDays === 0) {
+    // Today: show time like "2:30 PM"
+    return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  }
+  if (diffDays === 1) {
+    return 'Yesterday';
+  }
+  if (diffDays < 7) {
+    // Within the last week: show day name
+    return date.toLocaleDateString(undefined, { weekday: 'long' });
+  }
+  // Older: show date like "Feb 15"
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
 export function formatCountdown(seconds: number): string {
