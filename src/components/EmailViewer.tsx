@@ -1,18 +1,83 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { Icons } from './ui/Icons.tsx';
 import { useStore } from '../store/index.ts';
+import { useEmailBody } from '../hooks/useEmailBody.ts';
 
 export function EmailViewer() {
   const { selectedEmail, emails, accounts, deselectEmail, toggleStar, toggleRead, archiveEmail, deleteEmail } = useStore();
   const [copied, setCopied] = useState(false);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [iframeHeight, setIframeHeight] = useState(400);
 
-  if (!selectedEmail) return null;
-  const email = emails.find(e => e.id === selectedEmail.emailId);
-  if (!email) return null;
+  const emailId = selectedEmail?.emailId;
+  const email = emails.find(e => e.id === emailId);
+  const { data: body, isLoading: bodyLoading } = useEmailBody(emailId);
+
+  const resizeIframe = useCallback(() => {
+    const iframe = iframeRef.current;
+    if (!iframe?.contentDocument?.body) return;
+    const h = iframe.contentDocument.body.scrollHeight;
+    if (h > 0) setIframeHeight(h + 32);
+  }, []);
+
+  useEffect(() => {
+    const iframe = iframeRef.current;
+    if (!iframe || !body?.body_html) return;
+
+    const theme = document.documentElement.getAttribute('data-theme') || 'dark';
+    const isDark = theme === 'dark';
+
+    const doc = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    color: ${isDark ? '#d1d5db' : '#374151'};
+    background: transparent;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+  a { color: ${isDark ? '#60a5fa' : '#2563eb'}; }
+  img { max-width: 100%; height: auto; }
+  table { max-width: 100% !important; }
+  pre, code { white-space: pre-wrap; word-wrap: break-word; }
+  blockquote {
+    border-left: 3px solid ${isDark ? '#4b5563' : '#d1d5db'};
+    margin: 8px 0;
+    padding: 4px 12px;
+    color: ${isDark ? '#9ca3af' : '#6b7280'};
+  }
+</style>
+</head>
+<body>${body.body_html}</body>
+</html>`;
+
+    iframe.srcdoc = doc;
+
+    const onLoad = () => {
+      resizeIframe();
+      // Watch for dynamic content (images loading, etc.)
+      const observer = new ResizeObserver(resizeIframe);
+      if (iframe.contentDocument?.body) {
+        observer.observe(iframe.contentDocument.body);
+      }
+    };
+
+    iframe.addEventListener('load', onLoad);
+    return () => iframe.removeEventListener('load', onLoad);
+  }, [body?.body_html, resizeIframe]);
+
+  if (!selectedEmail || !email) return null;
   const account = accounts.find(a => a.id === email.accountId);
-
-  const fullBody = `${email.snippet}\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.\n\nDuis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.\n\nBest regards,\n${email.sender}`;
 
   const timestamp = new Date(email.time).toLocaleString('en-US', {
     weekday: 'short', month: 'short', day: 'numeric',
@@ -28,6 +93,9 @@ export function EmailViewer() {
 
   const avatarLetter = email.sender.charAt(0).toUpperCase();
   const avatarBg = account ? account.color : 'var(--blue)';
+
+  const hasHtml = body?.body_html;
+  const hasText = body?.body_text;
 
   return (
     <motion.div
@@ -108,11 +176,30 @@ export function EmailViewer() {
       </div>
       {/* Body */}
       <div className="email-viewer-body">
-        <div className="email-viewer-body-text">
-          {fullBody.split('\n\n').map((para, i) => (
-            <p key={i}>{para}</p>
-          ))}
-        </div>
+        {bodyLoading && (
+          <div className="email-viewer-loading">Loading email...</div>
+        )}
+        {!bodyLoading && hasHtml && (
+          <iframe
+            ref={iframeRef}
+            className="email-viewer-iframe"
+            sandbox="allow-same-origin"
+            style={{ height: iframeHeight }}
+            title="Email content"
+          />
+        )}
+        {!bodyLoading && !hasHtml && hasText && (
+          <div className="email-viewer-body-text">
+            {body.body_text!.split('\n\n').map((para, i) => (
+              <p key={i}>{para}</p>
+            ))}
+          </div>
+        )}
+        {!bodyLoading && !hasHtml && !hasText && (
+          <div className="email-viewer-body-text">
+            <p>{email.snippet}</p>
+          </div>
+        )}
       </div>
     </motion.div>
   );

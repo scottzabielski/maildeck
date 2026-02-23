@@ -280,9 +280,13 @@ export const useStore = create<StoreState>((set, get) => ({
     const email = get().emails.find(e => e.id === emailId);
     if (!email) return;
     const sel = get().selectedEmail;
+    // Mark as read before archiving
+    if (email.unread) {
+      fireEmailAction(emailId, 'mark_read');
+    }
     set(s => ({
       emails: s.emails.filter(e => e.id !== emailId),
-      undoAction: { type: 'archive', email, timestamp: Date.now() },
+      undoAction: { type: 'archive', email: { ...email, unread: false }, timestamp: Date.now() },
       selectedEmail: sel && sel.emailId === emailId ? null : s.selectedEmail,
     }));
     fireEmailAction(emailId, 'archive');
@@ -392,9 +396,15 @@ export const useStore = create<StoreState>((set, get) => ({
     const updated = s.sweepEmails.map(e => ({ ...e, sweepSeconds: Math.max(0, e.sweepSeconds - 1) }));
     const expired = updated.filter(e => e.sweepSeconds <= 0);
     const expiredIds = new Set(expired.map(e => e.id));
+    // Mark expired sweep emails as read before removing (they'll be archived/deleted)
+    if (expiredIds.size > 0) {
+      for (const id of expiredIds) {
+        const email = s.emails.find(e => e.id === id);
+        if (email?.unread) fireEmailAction(id, 'mark_read');
+      }
+    }
     return {
       sweepEmails: updated.filter(e => e.sweepSeconds > 0),
-      // Remove expired sweep emails from the main list (they've been archived/deleted)
       emails: expiredIds.size > 0 ? s.emails.filter(e => !expiredIds.has(e.id)) : s.emails,
     };
   }),

@@ -1639,6 +1639,20 @@ button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
   margin-bottom: 16px;
 }
 
+.email-viewer-iframe {
+  width: 100%;
+  max-width: 720px;
+  border: none;
+  background: transparent;
+  display: block;
+}
+
+.email-viewer-loading {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  padding: 20px 0;
+}
+
 
 /* ========================================
    ANIMATIONS
