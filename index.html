@@ -1,0 +1,2794 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MailDeck</title>
+
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Instrument+Sans:wght@600;700&display=swap" rel="stylesheet" />
+
+<!-- Import Map -->
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.2.0",
+    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+    "react/jsx-runtime": "https://esm.sh/react@18.2.0/jsx-runtime",
+    "zustand": "https://esm.sh/zustand@4.5.2?deps=react@18.2.0",
+    "zustand/shallow": "https://esm.sh/zustand@4.5.2/shallow?deps=react@18.2.0",
+    "framer-motion": "https://esm.sh/framer-motion@11.0.3?deps=react@18.2.0,react-dom@18.2.0"
+  }
+}
+</script>
+
+<script>
+// Flash prevention: apply theme synchronously before first paint
+(function() {
+  var t = localStorage.getItem('maildeck-theme') || 'dark';
+  var resolved = t;
+  if (t === 'system') {
+    resolved = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  document.documentElement.setAttribute('data-theme', resolved);
+})();
+</script>
+
+<style>
+/* ========================================
+   CSS RESET & DESIGN SYSTEM
+   ======================================== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  /* Backgrounds */
+  --bg-base: #08080d;
+  --bg-raised: #0f0f18;
+  --bg-surface: #171726;
+  --bg-elevated: #1f1f33;
+
+  /* Text */
+  --text-primary: #eef0f6;
+  --text-secondary: #8b91a8;
+  --text-tertiary: #565b73;
+
+  /* Borders */
+  --border-subtle: #1a1d2e;
+  --border-medium: #2a2d42;
+
+  /* Accents */
+  --blue: #2563eb;
+  --green: #16a34a;
+  --amber: #d97706;
+  --red: #dc2626;
+  --violet: #7c3aed;
+  --cyan: #0891b2;
+
+  /* Glow */
+  --glow-blue: rgba(37, 99, 235, 0.25);
+  --glow-green: rgba(22, 163, 74, 0.2);
+  --glow-amber: rgba(217, 119, 6, 0.2);
+  --glow-red: rgba(220, 38, 38, 0.2);
+  --glow-violet: rgba(124, 58, 237, 0.2);
+
+  /* Account Colors */
+  --account-scottz: #f25022;
+  --account-syzmail: #0078d4;
+  --account-gs-gmail: #ea4335;
+  --account-szabielski: #34a853;
+  --account-toluca: #d97706;
+  --account-toluca-sec: #8b5cf6;
+  --account-channel1: #06b6d4;
+
+  /* Typography */
+  --font-display: 'Instrument Sans', sans-serif;
+  --font-body: 'DM Sans', sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+
+  /* Sizing */
+  --column-width: 340px;
+  --topbar-height: 48px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+}
+
+/* Light Theme */
+[data-theme="light"] {
+  /* Backgrounds */
+  --bg-base: #f8f9fb;
+  --bg-raised: #ffffff;
+  --bg-surface: #f0f2f5;
+  --bg-elevated: #e8eaef;
+
+  /* Text */
+  --text-primary: #1a1d2e;
+  --text-secondary: #5f6580;
+  --text-tertiary: #8b91a8;
+
+  /* Borders */
+  --border-subtle: #e2e5eb;
+  --border-medium: #cdd1da;
+
+  /* Glows */
+  --glow-blue: rgba(37, 99, 235, 0.12);
+  --glow-green: rgba(22, 163, 74, 0.12);
+  --glow-amber: rgba(217, 119, 6, 0.12);
+  --glow-red: rgba(220, 38, 38, 0.12);
+  --glow-violet: rgba(124, 58, 237, 0.12);
+}
+
+/* Light theme targeted overrides */
+[data-theme="light"] body::before { opacity: 0.012; }
+[data-theme="light"] .context-menu-item:hover { background: rgba(0, 0, 0, 0.05); }
+[data-theme="light"] .view-tab.active { box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+[data-theme="light"] .undo-toast { box-shadow: 0 8px 30px rgba(0,0,0,0.1); }
+[data-theme="light"] .context-menu { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.06); }
+[data-theme="light"] .criteria-editor { box-shadow: 0 20px 60px rgba(0,0,0,0.12); }
+[data-theme="light"] .modal-overlay { background: rgba(0, 0, 0, 0.3); }
+[data-theme="light"] .filter-select option { background: #fff; }
+[data-theme="light"] .settings-select option { background: #fff; }
+
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Noise overlay */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 200px;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-medium); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-tertiary); }
+
+/* Selection */
+::selection { background: var(--blue); color: white; }
+
+/* Utility */
+button { cursor: pointer; font-family: inherit; border: none; background: none; color: inherit; }
+button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+/* ========================================
+   TOP BAR
+   ======================================== */
+.topbar {
+  height: var(--topbar-height);
+  background: var(--bg-raised);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 16px;
+  flex-shrink: 0;
+  z-index: 100;
+  position: relative;
+}
+
+.topbar-logo {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: -0.3px;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.topbar-logo svg { opacity: 0.9; }
+
+.topbar-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border-medium);
+  flex-shrink: 0;
+}
+
+/* View Switcher */
+.view-switcher {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--bg-base);
+  border-radius: var(--radius-md);
+  padding: 2px;
+  border: 1px solid var(--border-subtle);
+}
+
+.view-tab {
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  border-radius: var(--radius-sm);
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.view-tab:hover { color: var(--text-secondary); }
+
+.view-tab.active {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+
+/* Account Badges */
+.account-badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.account-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.account-badge:hover { background: var(--bg-surface); }
+
+.account-badge.disabled {
+  opacity: 0.35;
+  color: var(--text-tertiary);
+}
+
+.account-badge.disabled .account-dot {
+  opacity: 0.4;
+}
+
+.account-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.settings-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.settings-btn:hover {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+/* ========================================
+   DECK LAYOUT
+   ======================================== */
+.deck-layout {
+  display: flex;
+  height: calc(100% - var(--topbar-height));
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x proximity;
+  gap: 1px;
+  background: var(--border-subtle);
+}
+
+/* ========================================
+   COLUMN
+   ======================================== */
+.column {
+  width: var(--column-width);
+  min-width: var(--column-width);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-raised);
+  scroll-snap-align: start;
+  transition: box-shadow 0.2s ease;
+  position: relative;
+}
+
+.column:hover {
+  z-index: 1;
+}
+
+.column-header {
+  padding: 10px 14px;
+  border-top: 3px solid var(--column-accent, var(--blue));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  background: var(--bg-raised);
+  position: relative;
+}
+
+.column-header::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 14px;
+  right: 14px;
+  height: 1px;
+  background: var(--border-subtle);
+}
+
+.column-icon {
+  font-size: 14px;
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+.column-name {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  color: var(--text-primary);
+}
+
+.column-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  background: var(--bg-surface);
+  padding: 1px 6px;
+  border-radius: 8px;
+  min-width: 22px;
+  text-align: center;
+}
+
+.column-filter-btn {
+  margin-left: auto;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  color: var(--text-tertiary);
+  transition: all 0.15s ease;
+}
+
+.column-filter-btn:hover {
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+}
+
+.column-emails {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+/* ========================================
+   EMAIL CARD
+   ======================================== */
+.email-card {
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background 0.12s ease;
+  position: relative;
+  margin-bottom: 2px;
+}
+
+.email-card:hover {
+  background: var(--bg-surface);
+}
+
+.email-card.unread {
+  background: rgba(37, 99, 235, 0.04);
+}
+
+.email-card.unread::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--column-accent, var(--blue));
+}
+
+.email-card-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+
+.email-sender {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-primary);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.email-card:not(.unread) .email-sender {
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.email-account-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.email-time {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.email-subject {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.email-card:not(.unread) .email-subject {
+  color: var(--text-secondary);
+}
+
+.email-snippet {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ========================================
+   SWEEP COLUMN
+   ======================================== */
+.column.sweep .column-header {
+  border-top-color: var(--red);
+}
+
+.sweep-card {
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  margin-bottom: 2px;
+  position: relative;
+  transition: background 0.12s ease;
+}
+
+.sweep-card:hover { background: var(--bg-surface); }
+
+.sweep-card-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+
+.sweep-card .email-sender { flex: 1; }
+
+.sweep-subject {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sweep-bottom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sweep-countdown {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sweep-countdown svg { flex-shrink: 0; }
+
+.sweep-countdown.warning { color: var(--amber); }
+
+.sweep-countdown.critical {
+  color: var(--red);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.exempt-btn {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.exempt-btn:hover {
+  color: var(--text-secondary);
+  border-color: var(--border-medium);
+  background: var(--bg-surface);
+}
+
+/* ========================================
+   UNDO TOAST
+   ======================================== */
+.undo-toast {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-lg);
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+  z-index: 1000;
+  min-width: 280px;
+  animation: slideUp 0.25s ease-out;
+}
+
+@keyframes slideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.undo-toast-text {
+  font-size: 13px;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.undo-btn {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--blue);
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  transition: background 0.15s ease;
+}
+
+.undo-btn:hover { background: rgba(37, 99, 235, 0.15); }
+
+.undo-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: var(--blue);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  animation: shrink 5s linear forwards;
+}
+
+@keyframes shrink {
+  from { width: 100%; }
+  to { width: 0%; }
+}
+
+/* ========================================
+   CONTEXT MENU
+   ======================================== */
+.context-menu {
+  position: fixed;
+  z-index: 300;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3);
+  min-width: 200px;
+  padding: 4px;
+  animation: contextMenuIn 120ms ease-out;
+}
+
+@keyframes contextMenuIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.1s ease, color 0.1s ease;
+  user-select: none;
+}
+
+.context-menu-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+}
+
+.context-menu-item.danger:hover {
+  background: rgba(220, 38, 38, 0.15);
+  color: var(--red);
+}
+
+.context-menu-separator {
+  height: 1px;
+  background: var(--border-subtle);
+  margin: 4px 6px;
+}
+
+.email-card .star-indicator {
+  color: #eab308;
+  font-size: 13px;
+  line-height: 1;
+  margin-left: 2px;
+}
+
+/* ========================================
+   COLUMN CRITERIA EDITOR (MODAL)
+   ======================================== */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.15s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.criteria-editor {
+  background: var(--bg-raised);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-lg);
+  width: 520px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  animation: scaleIn 0.2s ease-out;
+}
+
+@keyframes scaleIn {
+  from { transform: scale(0.95); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.criteria-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.criteria-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.criteria-close {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  color: var(--text-tertiary);
+  transition: all 0.15s ease;
+}
+
+.criteria-close:hover {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.criteria-body { padding: 16px 20px; }
+
+.filter-group {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.filter-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.filter-logic-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+}
+
+.filter-logic-badge.and { color: var(--blue); }
+.filter-logic-badge.or { color: var(--violet); }
+
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.filter-row:last-child { margin-bottom: 0; }
+
+.filter-select, .filter-input {
+  font-family: var(--font-body);
+  font-size: 12px;
+  padding: 6px 10px;
+  background: var(--bg-base);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.filter-select:focus, .filter-input:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 2px var(--glow-blue);
+}
+
+.filter-select { cursor: pointer; }
+.filter-select option { background: var(--bg-base); }
+
+.filter-input { flex: 1; }
+
+.filter-remove-btn {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  border-radius: var(--radius-sm);
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.filter-remove-btn:hover {
+  color: var(--red);
+  background: rgba(220, 38, 38, 0.1);
+}
+
+.add-filter-btn, .add-group-btn {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.add-filter-btn:hover {
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+}
+
+.add-group-btn {
+  margin-top: 8px;
+}
+
+.add-group-btn:hover {
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+}
+
+.criteria-footer {
+  padding: 12px 20px;
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.btn-secondary {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+  transition: all 0.15s ease;
+}
+
+.btn-secondary:hover {
+  border-color: var(--border-medium);
+  background: var(--bg-surface);
+}
+
+.btn-primary {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  color: white;
+  background: var(--blue);
+  transition: all 0.15s ease;
+}
+
+.btn-primary:hover { background: #1d4ed8; }
+
+/* ========================================
+   SETTINGS — FULLSCREEN
+   ======================================== */
+.settings-screen {
+  position: fixed;
+  inset: 0;
+  background: var(--bg-base);
+  z-index: 400;
+  display: flex;
+  flex-direction: column;
+  animation: fadeIn 0.15s ease;
+}
+
+.settings-topbar {
+  height: var(--topbar-height);
+  background: var(--bg-raised);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.settings-back-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  transition: all 0.15s ease;
+}
+
+.settings-back-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-surface);
+}
+
+.settings-topbar-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--text-primary);
+}
+
+.settings-layout {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+/* Sidebar nav */
+.settings-nav {
+  width: 220px;
+  min-width: 220px;
+  background: var(--bg-raised);
+  border-right: 1px solid var(--border-subtle);
+  padding: 16px 0;
+  overflow-y: auto;
+}
+
+.settings-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 20px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  transition: all 0.12s ease;
+  width: 100%;
+  text-align: left;
+  position: relative;
+}
+
+.settings-nav-item:hover {
+  color: var(--text-primary);
+  background: var(--bg-surface);
+}
+
+.settings-nav-item.active {
+  color: var(--text-primary);
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.settings-nav-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  background: var(--blue);
+  border-radius: 0 1px 1px 0;
+}
+
+.settings-nav-icon {
+  font-size: 15px;
+  width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.settings-nav-label { font-size: 11px; color: var(--text-tertiary); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; padding: 16px 20px 6px; }
+
+/* Content panel */
+.settings-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 32px 40px;
+  max-width: 680px;
+}
+
+.settings-content-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 20px;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.settings-content-desc {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  margin-bottom: 28px;
+}
+
+.settings-card {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+
+.settings-card-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background 0.12s ease;
+}
+
+.settings-card-row:last-child { border-bottom: none; }
+.settings-card-row:hover { background: var(--bg-surface); }
+
+/* Account items in settings */
+.settings-account-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.settings-account-info { flex: 1; }
+
+.settings-account-name {
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.settings-account-name.editable {
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  padding: 2px 4px;
+  margin: -2px -4px;
+  transition: background 0.15s;
+}
+
+.settings-account-name.editable:hover {
+  background: var(--bg-elevated);
+}
+
+.settings-account-provider {
+  font-weight: 400;
+  color: var(--text-tertiary);
+}
+
+.settings-account-name-input {
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--text-primary);
+  background: var(--bg-base);
+  border: 1px solid var(--blue);
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+  outline: none;
+  box-shadow: 0 0 0 2px var(--glow-blue);
+  width: 100%;
+}
+
+.settings-account-email {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.settings-account-status {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: rgba(22, 163, 74, 0.15);
+  color: var(--green);
+}
+
+.settings-account-remove {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  transition: all 0.15s ease;
+}
+
+.settings-account-remove:hover {
+  color: var(--red);
+  background: rgba(220, 38, 38, 0.1);
+}
+
+.settings-add-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--blue);
+  padding: 10px 16px;
+  width: 100%;
+  transition: background 0.12s ease;
+}
+
+.settings-add-btn:hover { background: rgba(37, 99, 235, 0.06); }
+
+/* Sweep rules */
+.sweep-rule {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.sweep-rule:last-child { border-bottom: none; }
+
+.sweep-rule-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.sweep-rule-name {
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.sweep-rule-toggle {
+  width: 34px;
+  height: 18px;
+  border-radius: 9px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-medium);
+  position: relative;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.sweep-rule-toggle.active {
+  background: var(--blue);
+  border-color: var(--blue);
+}
+
+.sweep-rule-toggle::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: white;
+  transition: transform 0.2s ease;
+}
+
+.sweep-rule-toggle.active::after {
+  transform: translateX(16px);
+}
+
+.sweep-rule-detail {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.sweep-rule-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.sweep-rule-tag {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--text-tertiary);
+}
+
+/* Sweep Rule Editor */
+.sweep-rule-sender {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--bg-base);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  margin-bottom: 16px;
+}
+
+.sweep-rule-sender svg {
+  width: 16px;
+  height: 16px;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.sweep-rule-sender-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.sweep-rule-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sweep-rule-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--bg-base);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.sweep-rule-option:hover {
+  border-color: var(--border-medium);
+}
+
+.sweep-rule-option.selected {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 1px var(--blue), 0 0 12px var(--glow-blue);
+}
+
+.sweep-rule-option.danger.selected {
+  border-color: var(--red);
+  box-shadow: 0 0 0 1px var(--red), 0 0 12px var(--glow-red);
+}
+
+.sweep-rule-option-radio {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--border-medium);
+  flex-shrink: 0;
+  margin-top: 2px;
+  position: relative;
+  transition: border-color 0.15s;
+}
+
+.sweep-rule-option.selected .sweep-rule-option-radio {
+  border-color: var(--blue);
+}
+
+.sweep-rule-option.danger.selected .sweep-rule-option-radio {
+  border-color: var(--red);
+}
+
+.sweep-rule-option.selected .sweep-rule-option-radio::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--blue);
+}
+
+.sweep-rule-option.danger.selected .sweep-rule-option-radio::after {
+  background: var(--red);
+}
+
+.sweep-rule-option-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.sweep-rule-option-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sweep-rule-option-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+}
+
+.sweep-rule-option-desc {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-top: 2px;
+}
+
+.sweep-rule-delay {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  margin-top: 12px;
+  background: var(--bg-base);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.sweep-rule-delay label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.sweep-rule-delay select {
+  font-family: var(--font-body);
+  font-size: 12px;
+  padding: 4px 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.btn-danger {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  color: white;
+  background: var(--red);
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-danger:hover { background: #b91c1c; }
+
+/* Settings option rows */
+.settings-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.settings-option:last-child { border-bottom: none; }
+
+.settings-option-info { flex: 1; }
+
+.settings-option-label {
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.settings-option-desc {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-top: 2px;
+}
+
+.settings-select {
+  font-family: var(--font-body);
+  font-size: 12px;
+  padding: 5px 10px;
+  background: var(--bg-base);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+  outline: none;
+}
+
+.settings-select:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 2px var(--glow-blue);
+}
+
+.settings-select option { background: var(--bg-base); }
+
+/* ========================================
+   DRAG & DROP REORDER
+   ======================================== */
+/* Account badges reorder */
+.account-badges { list-style: none; }
+.account-badge { cursor: grab; }
+.account-badge:active { cursor: grabbing; }
+
+/* Settings account drag */
+.settings-card .settings-account-draggable { cursor: grab; position: relative; }
+.settings-card .settings-account-draggable:active { cursor: grabbing; }
+.drag-handle-wrap {
+  color: var(--text-tertiary);
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  cursor: grab;
+  opacity: 0.4;
+  transition: opacity 0.15s;
+}
+.settings-card-row:hover .drag-handle-wrap,
+.settings-account-draggable:hover .drag-handle-wrap { opacity: 0.8; }
+
+/* Column reorder */
+.deck-columns-reorder {
+  display: flex;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  gap: 1px;
+}
+.column-reorder-item { list-style: none; }
+.column-header { cursor: grab; }
+.column-header:active { cursor: grabbing; }
+.column-drag-handle {
+  color: var(--text-tertiary);
+  display: flex;
+  align-items: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+}
+.column-header:hover .column-drag-handle { opacity: 0.5; }
+
+/* ========================================
+   ANIMATIONS
+   ======================================== */
+.email-enter {
+  animation: emailSlideIn 0.3s ease-out;
+}
+
+@keyframes emailSlideIn {
+  from { transform: translateY(-10px); opacity: 0; max-height: 0; }
+  to { transform: translateY(0); opacity: 1; max-height: 100px; }
+}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="module">
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { createRoot } from 'react-dom/client';
+import { create } from 'zustand';
+import { motion, AnimatePresence, Reorder } from 'framer-motion';
+
+// ========================================
+// MOCK DATA
+// ========================================
+const ACCOUNTS = [
+  { id: 'scottz', name: 'ScottZ.tv', email: 'scott@scottz.tv', color: '#f25022', provider: 'Outlook' },
+  { id: 'syzmail', name: 'SYZ Mail', email: 'syzmail', color: '#0078d4', provider: 'Outlook' },
+  { id: 'gs-gmail', name: 'G&S gMail', email: 'gs@gmail.com', color: '#ea4335', provider: 'Gmail' },
+  { id: 'szabielski', name: 'szabielski', email: 'szabielski@gmail.com', color: '#34a853', provider: 'Gmail' },
+  { id: 'toluca', name: 'Toluca', email: 'szabielski@tolucabaseball.com', color: '#d97706', provider: 'Gmail' },
+  { id: 'toluca-sec', name: 'Toluca Sec', email: 'secretary@tolucabaseball.com', color: '#8b5cf6', provider: 'Gmail' },
+  { id: 'channel1', name: 'Channel1', email: 'scott@channel1.ai', color: '#06b6d4', provider: 'Gmail' },
+];
+
+const VIEWS = [
+  { id: 'streams', name: 'Streams' },
+  { id: 'inboxes', name: 'Inboxes' },
+];
+
+const COLUMNS = [
+  {
+    id: 'newsletters',
+    name: 'Newsletters',
+    icon: '📬',
+    accent: '#7c3aed',
+    criteria: [
+      { field: 'from', op: 'contains', value: 'substack.com' },
+      { field: 'from', op: 'contains', value: 'newsletter' },
+    ],
+    criteriaLogic: 'or',
+  },
+  {
+    id: 'github',
+    name: 'GitHub',
+    icon: '🔔',
+    accent: '#16a34a',
+    criteria: [
+      { field: 'from', op: 'contains', value: 'github.com' },
+    ],
+    criteriaLogic: 'and',
+  },
+  {
+    id: 'team',
+    name: 'Team',
+    icon: '👥',
+    accent: '#2563eb',
+    criteria: [
+      { field: 'to', op: 'equals', value: 'team@company.com' },
+      { field: 'label', op: 'equals', value: 'internal' },
+    ],
+    criteriaLogic: 'or',
+  },
+  {
+    id: 'clients',
+    name: 'Clients',
+    icon: '💼',
+    accent: '#d97706',
+    criteria: [
+      { field: 'label', op: 'equals', value: 'client' },
+      { field: 'from', op: 'contains', value: 'acme.co' },
+    ],
+    criteriaLogic: 'or',
+  },
+];
+
+const NOW = Date.now();
+const mins = m => NOW - m * 60000;
+const hrs = h => NOW - h * 3600000;
+const days = d => NOW - d * 86400000;
+
+const EMAILS = [
+  // Newsletters (6)
+  { id: 'n1', columnId: 'newsletters', accountId: 'szabielski', sender: 'Lenny Rachitsky', subject: 'The art of product sense', snippet: 'Why the best PMs develop intuition over frameworks...', time: mins(12), unread: true, starred: false },
+  { id: 'n2', columnId: 'newsletters', accountId: 'szabielski', sender: 'Dense Discovery', subject: 'Issue #287 — Design tools evolution', snippet: 'A curated newsletter of interesting links and resources...', time: mins(45), unread: true, starred: false },
+  { id: 'n3', columnId: 'newsletters', accountId: 'scottz', sender: 'TLDR', subject: 'TLDR Tech 2026-02-22', snippet: 'Apple Vision Pro 2 leaked specs, OpenAI announces...', time: hrs(2), unread: true, starred: false },
+  { id: 'n4', columnId: 'newsletters', accountId: 'channel1', sender: 'Stratechery', subject: 'The AI supply chain bottleneck', snippet: 'The most important constraint on AI progress isn\'t...', time: hrs(5), unread: false, starred: false },
+  { id: 'n5', columnId: 'newsletters', accountId: 'szabielski', sender: 'Benedict Evans', subject: 'The AI hardware race', snippet: 'New analysis on custom silicon and the economics of...', time: hrs(18), unread: false, starred: false },
+  { id: 'n6', columnId: 'newsletters', accountId: 'scottz', sender: 'Morning Brew', subject: 'Markets rally on Fed signals', snippet: 'The S&P 500 closed at another record high as investors...', time: days(1), unread: false, starred: false },
+
+  // GitHub (5)
+  { id: 'g1', columnId: 'github', accountId: 'channel1', sender: 'dependabot[bot]', subject: 'Bump vite from 5.4.2 to 5.4.7', snippet: 'Bumps vite from 5.4.2 to 5.4.7. Release notes...', time: mins(8), unread: true, starred: false },
+  { id: 'g2', columnId: 'github', accountId: 'channel1', sender: 'sarah-chen', subject: 'PR #342: Refactor auth middleware', snippet: 'Ready for review. Split the monolithic auth handler into...', time: mins(34), unread: true, starred: false },
+  { id: 'g3', columnId: 'github', accountId: 'szabielski', sender: 'GitHub Actions', subject: 'CI failed: main — deploy pipeline', snippet: 'Build failed at step 3/7: Type check errors in...', time: hrs(1), unread: true, starred: false },
+  { id: 'g4', columnId: 'github', accountId: 'channel1', sender: 'alex-kumar', subject: 'Issue #891: Memory leak in WebSocket handler', snippet: 'Connections aren\'t being properly cleaned up when clients...', time: hrs(4), unread: false, starred: false },
+  { id: 'g5', columnId: 'github', accountId: 'szabielski', sender: 'maria-rodriguez', subject: 'PR #339: Add rate limiting', snippet: 'Implemented token bucket algorithm with Redis backing...', time: days(2), unread: false, starred: false },
+
+  // Team (6)
+  { id: 't1', columnId: 'team', accountId: 'syzmail', sender: 'Emily Park', subject: 'Q1 planning kickoff — agenda', snippet: 'Hey team, here\'s the agenda for Monday\'s planning session...', time: mins(15), unread: true, starred: false },
+  { id: 't2', columnId: 'team', accountId: 'syzmail', sender: 'Jordan Blake', subject: 'Design review feedback', snippet: 'Great progress on the dashboard redesign. A few notes on...', time: mins(52), unread: true, starred: false },
+  { id: 't3', columnId: 'team', accountId: 'syzmail', sender: 'Rachel Kim', subject: 'Updated project timeline', snippet: 'Adjusted milestones based on yesterday\'s discussion. Key...', time: hrs(2), unread: true, starred: false },
+  { id: 't4', columnId: 'team', accountId: 'syzmail', sender: 'Mike Torres', subject: 'Standup notes — Feb 21', snippet: 'Blockers: waiting on API keys from vendor. Completed: auth...', time: hrs(6), unread: false, starred: false },
+  { id: 't5', columnId: 'team', accountId: 'syzmail', sender: 'Lisa Chang', subject: 'New hire onboarding checklist', snippet: 'Updated the onboarding doc with the latest tool access...', time: days(1), unread: false, starred: false },
+  { id: 't6', columnId: 'team', accountId: 'toluca', sender: 'David Wu', subject: 'Team lunch — Friday poll', snippet: 'Cast your vote! Options: Thai, Mexican, Italian, Sushi...', time: days(2), unread: false, starred: false },
+
+  // Clients (5)
+  { id: 'c1', columnId: 'clients', accountId: 'scottz', sender: 'James Foster (Acme Co)', subject: 'Contract renewal discussion', snippet: 'Hi Scott, we\'d like to discuss terms for the upcoming...', time: mins(22), unread: true, starred: false },
+  { id: 'c2', columnId: 'clients', accountId: 'channel1', sender: 'Nina Patel (TechStart)', subject: 'Integration timeline update', snippet: 'Our engineering team has completed phase 1 of the API...', time: hrs(1), unread: true, starred: false },
+  { id: 'c3', columnId: 'clients', accountId: 'scottz', sender: 'Robert Lane (Meridian)', subject: 'Quarterly review deck', snippet: 'Attached is the QBR presentation for next week. Please...', time: hrs(3), unread: true, starred: false },
+  { id: 'c4', columnId: 'clients', accountId: 'gs-gmail', sender: 'Samantha Cruz (Bolt)', subject: 'Feature request: SSO support', snippet: 'Our security team requires SAML-based SSO for enterprise...', time: hrs(8), unread: false, starred: false },
+  { id: 'c5', columnId: 'clients', accountId: 'toluca-sec', sender: 'Tom Wright (GlobalFin)', subject: 'Invoice #4521 — clarification', snippet: 'Quick question about the line item for additional API...', time: days(1), unread: false, starred: false },
+];
+
+const SWEEP_EMAILS_INIT = [
+  { id: 's1', accountId: 'szabielski', sender: 'LinkedIn', subject: 'Your weekly career update', sweepSeconds: 47, exempted: false },
+  { id: 's2', accountId: 'gs-gmail', sender: 'Uber Eats', subject: 'Craving something? 30% off today', sweepSeconds: 3 * 3600 + 1420, exempted: false },
+  { id: 's3', accountId: 'scottz', sender: 'Mailchimp', subject: 'Your campaign stats are in', sweepSeconds: 12 * 3600 + 600, exempted: false },
+  { id: 's4', accountId: 'syzmail', sender: 'Jira', subject: '[PROJ-412] moved to In Review', sweepSeconds: 2 * 86400 + 7200, exempted: false },
+  { id: 's5', accountId: 'channel1', sender: 'Coursera', subject: 'Continue learning: ML Specialization', sweepSeconds: 6 * 86400 + 14400, exempted: false },
+];
+
+const SWEEP_RULES = [
+  { id: 'sr1', name: 'Marketing emails', detail: 'Auto-archive after 24h if unread', enabled: true, sender: null, action: 'alwaysSweep', delayHours: 24 },
+  { id: 'sr2', name: 'Social notifications', detail: 'Auto-archive after 12h if unread', enabled: true, sender: null, action: 'alwaysSweep', delayHours: 12 },
+  { id: 'sr3', name: 'Promotional offers', detail: 'Auto-archive after 6h if unread', enabled: false, sender: null, action: 'alwaysSweep', delayHours: 6 },
+  { id: 'sr4', name: 'Automated reports', detail: 'Auto-archive after 48h if unread', enabled: true, sender: null, action: 'alwaysSweep', delayHours: 48 },
+];
+
+// ========================================
+// ZUSTAND STORE
+// ========================================
+function getInitialTheme() {
+  try { return localStorage.getItem('maildeck-theme') || 'dark'; } catch { return 'dark'; }
+}
+
+const useStore = create((set, get) => ({
+  theme: getInitialTheme(),
+  accounts: ACCOUNTS,
+  emails: EMAILS,
+  columns: COLUMNS,
+  sweepEmails: SWEEP_EMAILS_INIT,
+  views: VIEWS,
+  sweepRules: SWEEP_RULES,
+  activeViewId: 'streams',
+  disabledAccountIds: new Set(),
+  isSettingsOpen: false,
+  settingsSection: 'accounts',
+  editingColumnId: null,
+  undoAction: null,
+  contextMenu: null,
+  sweepDelayHours: 24,
+  sweepRuleEditor: null,
+
+  setActiveView: (viewId) => set({ activeViewId: viewId }),
+  setTheme: (theme) => {
+    try { localStorage.setItem('maildeck-theme', theme); } catch {}
+    set({ theme });
+  },
+  toggleAccount: (accountId) => set(s => {
+    const next = new Set(s.disabledAccountIds);
+    if (next.has(accountId)) next.delete(accountId);
+    else next.add(accountId);
+    return { disabledAccountIds: next };
+  }),
+  reorderAccounts: (orderedAccounts) => set({ accounts: orderedAccounts }),
+  reorderColumns: (orderedColumns) => set({ columns: orderedColumns }),
+  renameAccount: (accountId, name) => set(s => ({
+    accounts: s.accounts.map(a => a.id === accountId ? { ...a, name } : a),
+  })),
+  toggleSettings: () => set(s => ({ isSettingsOpen: !s.isSettingsOpen, settingsSection: 'accounts' })),
+  setSettingsSection: (section) => set({ settingsSection: section }),
+  openCriteriaEditor: (columnId) => set({ editingColumnId: columnId }),
+  closeCriteriaEditor: () => set({ editingColumnId: null }),
+
+  openContextMenu: (x, y, emailId, columnId) => set({ contextMenu: { x, y, emailId, columnId } }),
+  closeContextMenu: () => set({ contextMenu: null }),
+
+  toggleRead: (emailId) => set(s => ({
+    emails: s.emails.map(e => e.id === emailId ? { ...e, unread: !e.unread } : e),
+  })),
+
+  toggleStar: (emailId) => set(s => ({
+    emails: s.emails.map(e => e.id === emailId ? { ...e, starred: !e.starred } : e),
+  })),
+
+  archiveEmail: (emailId) => {
+    const email = get().emails.find(e => e.id === emailId);
+    if (!email) return;
+    set(s => ({
+      emails: s.emails.filter(e => e.id !== emailId),
+      undoAction: { type: 'archive', email, timestamp: Date.now() },
+    }));
+  },
+
+  deleteEmail: (emailId) => {
+    const email = get().emails.find(e => e.id === emailId);
+    if (!email) return;
+    set(s => ({
+      emails: s.emails.filter(e => e.id !== emailId),
+      undoAction: { type: 'delete', email, timestamp: Date.now() },
+    }));
+  },
+
+  moveToSweep: (emailId) => {
+    const email = get().emails.find(e => e.id === emailId);
+    if (!email) return;
+    const delaySec = get().sweepDelayHours * 3600;
+    set(s => ({
+      emails: s.emails.filter(e => e.id !== emailId),
+      sweepEmails: [...s.sweepEmails, { id: email.id, accountId: email.accountId, sender: email.sender, subject: email.subject, sweepSeconds: delaySec, exempted: false }].sort((a, b) => a.sweepSeconds - b.sweepSeconds),
+      undoAction: { type: 'moveToSweep', email, timestamp: Date.now() },
+    }));
+  },
+
+  exemptSweepEmail: (emailId) => {
+    const email = get().sweepEmails.find(e => e.id === emailId);
+    if (!email) return;
+    set(s => ({
+      sweepEmails: s.sweepEmails.filter(e => e.id !== emailId),
+      undoAction: { type: 'exempt', email, timestamp: Date.now() },
+    }));
+  },
+
+  undoLastAction: () => {
+    const action = get().undoAction;
+    if (!action) return;
+    if (action.type === 'exempt') {
+      set(s => ({
+        sweepEmails: [...s.sweepEmails, action.email].sort((a, b) => a.sweepSeconds - b.sweepSeconds),
+        undoAction: null,
+      }));
+    } else if (action.type === 'archive' || action.type === 'delete') {
+      set(s => ({
+        emails: [action.email, ...s.emails],
+        undoAction: null,
+      }));
+    } else if (action.type === 'moveToSweep') {
+      set(s => ({
+        emails: [action.email, ...s.emails],
+        sweepEmails: s.sweepEmails.filter(e => e.id !== action.email.id),
+        undoAction: null,
+      }));
+    }
+  },
+
+  clearUndo: () => set({ undoAction: null }),
+
+  toggleSweepRule: (ruleId) => set(s => ({
+    sweepRules: s.sweepRules.map(r => r.id === ruleId ? { ...r, enabled: !r.enabled } : r),
+  })),
+
+  setSweepDelayHours: (hours) => set({ sweepDelayHours: hours }),
+
+  openSweepRuleEditor: (emailId) => {
+    const email = get().emails.find(e => e.id === emailId);
+    if (!email) return;
+    set({ sweepRuleEditor: { emailId, sender: email.sender, columnId: email.columnId || null } });
+  },
+  closeSweepRuleEditor: () => set({ sweepRuleEditor: null }),
+
+  addSweepRule: (rule) => set(s => ({
+    sweepRules: [...s.sweepRules, { ...rule, id: `sr-${Date.now()}`, enabled: true }],
+  })),
+
+  applySweepAction: (sender, action, delayHours) => {
+    const delaySec = delayHours * 3600;
+    set(s => {
+      const matching = s.emails.filter(e => e.sender === sender);
+      if (action === 'moveAllToSweep' || action === 'alwaysSweep') {
+        return {
+          emails: s.emails.filter(e => e.sender !== sender),
+          sweepEmails: [
+            ...s.sweepEmails,
+            ...matching.map(e => ({ id: e.id, accountId: e.accountId, sender: e.sender, subject: e.subject, sweepSeconds: delaySec, exempted: false })),
+          ].sort((a, b) => a.sweepSeconds - b.sweepSeconds),
+        };
+      }
+      if (action === 'keepLatest') {
+        const sorted = [...matching].sort((a, b) => b.time - a.time);
+        const keep = sorted[0];
+        const rest = sorted.slice(1);
+        return {
+          emails: s.emails.filter(e => e.sender !== sender || e.id === (keep && keep.id)),
+          sweepEmails: [
+            ...s.sweepEmails,
+            ...rest.map(e => ({ id: e.id, accountId: e.accountId, sender: e.sender, subject: e.subject, sweepSeconds: delaySec, exempted: false })),
+          ].sort((a, b) => a.sweepSeconds - b.sweepSeconds),
+        };
+      }
+      if (action === 'alwaysDelete') {
+        return {
+          emails: s.emails.filter(e => e.sender !== sender),
+        };
+      }
+      return {};
+    });
+  },
+
+  addNewEmail: (email) => set(s => ({
+    emails: [{ starred: false, ...email }, ...s.emails],
+  })),
+
+  tickSweepCountdowns: () => set(s => ({
+    sweepEmails: s.sweepEmails
+      .map(e => ({ ...e, sweepSeconds: Math.max(0, e.sweepSeconds - 1) }))
+      .filter(e => e.sweepSeconds > 0),
+  })),
+}));
+
+// ========================================
+// HELPERS
+// ========================================
+function formatTime(timestamp) {
+  const diff = Date.now() - timestamp;
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return 'now';
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  const d = Math.floor(h / 24);
+  return `${d}d`;
+}
+
+function formatCountdown(seconds) {
+  if (seconds >= 86400) {
+    const d = Math.floor(seconds / 86400);
+    const h = Math.floor((seconds % 86400) / 3600);
+    return `${d}d ${h}h`;
+  }
+  if (seconds >= 3600) {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    return `${h}h ${m}m`;
+  }
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function getCountdownClass(seconds) {
+  if (seconds < 60) return 'critical';
+  if (seconds < 3600) return 'warning';
+  return '';
+}
+
+// SVG Icons as components
+const Icons = {
+  Filter: () => React.createElement('svg', { width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+    React.createElement('polygon', { points: '22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3' })
+  ),
+  Settings: () => React.createElement('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+    React.createElement('circle', { cx: 12, cy: 12, r: 3 }),
+    React.createElement('path', { d: 'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z' })
+  ),
+  Close: () => React.createElement('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+    React.createElement('line', { x1: 18, y1: 6, x2: 6, y2: 18 }),
+    React.createElement('line', { x1: 6, y1: 6, x2: 18, y2: 18 })
+  ),
+  Clock: () => React.createElement('svg', { width: 12, height: 12, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+    React.createElement('circle', { cx: 12, cy: 12, r: 10 }),
+    React.createElement('polyline', { points: '12 6 12 12 16 14' })
+  ),
+  Plus: () => React.createElement('svg', { width: 12, height: 12, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+    React.createElement('line', { x1: 12, y1: 5, x2: 12, y2: 19 }),
+    React.createElement('line', { x1: 5, y1: 12, x2: 19, y2: 12 })
+  ),
+  Minus: () => React.createElement('svg', { width: 12, height: 12, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+    React.createElement('line', { x1: 5, y1: 12, x2: 19, y2: 12 })
+  ),
+  Mail: () => React.createElement('svg', { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+    React.createElement('rect', { x: 2, y: 4, width: 20, height: 16, rx: 2 }),
+    React.createElement('path', { d: 'm22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7' })
+  ),
+  ChevronLeft: () => React.createElement('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+    React.createElement('polyline', { points: '15 18 9 12 15 6' })
+  ),
+  ChevronRight: () => React.createElement('svg', { width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+    React.createElement('polyline', { points: '9 18 15 12 9 6' })
+  ),
+  Envelope: () => React.createElement('svg', { width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+    React.createElement('rect', { x: 2, y: 4, width: 20, height: 16, rx: 2 }),
+    React.createElement('path', { d: 'm22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7' })
+  ),
+  EnvelopeOpen: () => React.createElement('svg', { width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+    React.createElement('path', { d: 'M21.2 8.4c.5.38.8.97.8 1.6v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V10a2 2 0 0 1 .8-1.6l8-6a2 2 0 0 1 2.4 0l8 6Z' }),
+    React.createElement('path', { d: 'm22 10-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 10' })
+  ),
+  Star: () => React.createElement('svg', { width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+    React.createElement('polygon', { points: '12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2' })
+  ),
+  Archive: () => React.createElement('svg', { width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+    React.createElement('rect', { x: 2, y: 3, width: 20, height: 5, rx: 1 }),
+    React.createElement('path', { d: 'M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8' }),
+    React.createElement('path', { d: 'M10 12h4' })
+  ),
+  Trash: () => React.createElement('svg', { width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+    React.createElement('path', { d: 'M3 6h18' }),
+    React.createElement('path', { d: 'M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6' }),
+    React.createElement('path', { d: 'M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2' })
+  ),
+  Sweep: () => React.createElement('svg', { width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+    React.createElement('path', { d: 'M12 3v18' }),
+    React.createElement('path', { d: 'M8 21H4a1 1 0 0 1-1-1v-1a1 1 0 0 1 1-1h16a1 1 0 0 1 1 1v1a1 1 0 0 1-1 1h-4' }),
+    React.createElement('path', { d: 'm15 6-3-3-3 3' })
+  ),
+  DragHandle: () => React.createElement('svg', { width: 12, height: 12, viewBox: '0 0 16 16', fill: 'currentColor', className: 'drag-handle' },
+    React.createElement('circle', { cx: 5.5, cy: 2.5, r: 1.2 }),
+    React.createElement('circle', { cx: 10.5, cy: 2.5, r: 1.2 }),
+    React.createElement('circle', { cx: 5.5, cy: 8, r: 1.2 }),
+    React.createElement('circle', { cx: 10.5, cy: 8, r: 1.2 }),
+    React.createElement('circle', { cx: 5.5, cy: 13.5, r: 1.2 }),
+    React.createElement('circle', { cx: 10.5, cy: 13.5, r: 1.2 })
+  ),
+};
+
+// ========================================
+// COMPONENTS
+// ========================================
+
+// --- TopBar ---
+function TopBar() {
+  const { views, activeViewId, setActiveView, accounts, disabledAccountIds, toggleAccount, toggleSettings, reorderAccounts } = useStore();
+
+  return React.createElement('div', { className: 'topbar' },
+    React.createElement('div', { className: 'topbar-logo' },
+      React.createElement(Icons.Mail),
+      'MailDeck'
+    ),
+    React.createElement('div', { className: 'topbar-divider' }),
+    React.createElement('div', { className: 'view-switcher' },
+      views.map(v => React.createElement('button', {
+        key: v.id,
+        className: `view-tab ${v.id === activeViewId ? 'active' : ''}`,
+        onClick: () => setActiveView(v.id),
+      }, v.name))
+    ),
+    React.createElement(Reorder.Group, {
+      as: 'div',
+      axis: 'x',
+      values: accounts,
+      onReorder: reorderAccounts,
+      className: 'account-badges',
+    },
+      accounts.map(a => React.createElement(Reorder.Item, {
+        key: a.id,
+        value: a,
+        as: 'button',
+        className: `account-badge ${disabledAccountIds.has(a.id) ? 'disabled' : ''}`,
+        onClick: () => toggleAccount(a.id),
+        whileDrag: { scale: 1.05, boxShadow: '0 4px 12px rgba(0,0,0,0.3)' },
+      },
+        React.createElement('span', { className: 'account-dot', style: { background: a.color } }),
+        a.name
+      ))
+    ),
+    React.createElement('button', { className: 'settings-btn', onClick: toggleSettings },
+      React.createElement(Icons.Settings)
+    )
+  );
+}
+
+// --- EmailCard ---
+function EmailCard({ email, accent, accounts, columnId }) {
+  const openContextMenu = useStore(s => s.openContextMenu);
+  const account = accounts.find(a => a.id === email.accountId);
+  const handleContextMenu = (e) => {
+    e.preventDefault();
+    openContextMenu(e.clientX, e.clientY, email.id, columnId || email.columnId);
+  };
+  return React.createElement(motion.div, {
+    className: `email-card ${email.unread ? 'unread' : ''} ${email.starred ? 'starred' : ''}`,
+    style: { '--column-accent': accent },
+    layout: true,
+    initial: { opacity: 0, y: -8 },
+    animate: { opacity: 1, y: 0 },
+    exit: { opacity: 0, x: -20, transition: { duration: 0.2 } },
+    transition: { duration: 0.25 },
+    onContextMenu: handleContextMenu,
+  },
+    React.createElement('div', { className: 'email-card-top' },
+      React.createElement('span', { className: 'email-sender' }, email.sender),
+      email.starred && React.createElement('span', { className: 'star-indicator' }, '\u2605'),
+      account && React.createElement('span', { className: 'email-account-dot', style: { background: account.color } }),
+      React.createElement('span', { className: 'email-time' }, formatTime(email.time))
+    ),
+    React.createElement('div', { className: 'email-subject' }, email.subject),
+    React.createElement('div', { className: 'email-snippet' }, email.snippet)
+  );
+}
+
+// --- Column ---
+function Column({ column }) {
+  const { emails, accounts, disabledAccountIds, openCriteriaEditor } = useStore();
+  const columnEmails = useMemo(
+    () => emails.filter(e => e.columnId === column.id && !disabledAccountIds.has(e.accountId)),
+    [emails, column.id, disabledAccountIds]
+  );
+  const unreadCount = columnEmails.filter(e => e.unread).length;
+
+  return React.createElement('div', { className: 'column', style: { '--column-accent': column.accent } },
+    React.createElement('div', { className: 'column-header', style: { borderTopColor: column.accent } },
+      React.createElement('span', { className: 'column-drag-handle' }, React.createElement(Icons.DragHandle)),
+      React.createElement('span', { className: 'column-icon' }, column.icon),
+      React.createElement('span', { className: 'column-name' }, column.name),
+      React.createElement('span', { className: 'column-count' }, unreadCount > 0 ? unreadCount : columnEmails.length),
+      React.createElement('button', {
+        className: 'column-filter-btn',
+        onClick: () => openCriteriaEditor(column.id),
+      }, React.createElement(Icons.Filter))
+    ),
+    React.createElement('div', { className: 'column-emails' },
+      React.createElement(AnimatePresence, { initial: false },
+        columnEmails.map(email =>
+          React.createElement(EmailCard, { key: email.id, email, accent: column.accent, accounts, columnId: column.id })
+        )
+      )
+    )
+  );
+}
+
+// --- SweepCard ---
+function SweepCard({ email }) {
+  const { accounts, exemptSweepEmail } = useStore();
+  const account = accounts.find(a => a.id === email.accountId);
+  const cdClass = getCountdownClass(email.sweepSeconds);
+
+  return React.createElement(motion.div, {
+    className: 'sweep-card',
+    layout: true,
+    initial: { opacity: 0, y: -8 },
+    animate: { opacity: 1, y: 0 },
+    exit: { opacity: 0, x: 30, transition: { duration: 0.2 } },
+    transition: { duration: 0.25 },
+  },
+    React.createElement('div', { className: 'sweep-card-top' },
+      React.createElement('span', { className: 'email-sender' }, email.sender),
+      account && React.createElement('span', { className: 'email-account-dot', style: { background: account.color } })
+    ),
+    React.createElement('div', { className: 'sweep-subject' }, email.subject),
+    React.createElement('div', { className: 'sweep-bottom' },
+      React.createElement('div', { className: `sweep-countdown ${cdClass}` },
+        React.createElement(Icons.Clock),
+        formatCountdown(email.sweepSeconds)
+      ),
+      React.createElement('button', {
+        className: 'exempt-btn',
+        onClick: () => exemptSweepEmail(email.id),
+      }, 'Exempt')
+    )
+  );
+}
+
+// --- SweepColumn ---
+function SweepColumn() {
+  const sweepEmails = useStore(s => s.sweepEmails);
+  const disabledAccountIds = useStore(s => s.disabledAccountIds);
+  const filtered = useMemo(
+    () => sweepEmails.filter(e => !disabledAccountIds.has(e.accountId)),
+    [sweepEmails, disabledAccountIds]
+  );
+
+  return React.createElement('div', { className: 'column sweep' },
+    React.createElement('div', { className: 'column-header' },
+      React.createElement('span', { className: 'column-icon' }, '🧹'),
+      React.createElement('span', { className: 'column-name' }, 'Sweep'),
+      React.createElement('span', { className: 'column-count' }, filtered.length)
+    ),
+    React.createElement('div', { className: 'column-emails' },
+      React.createElement(AnimatePresence, { initial: false },
+        filtered.map(email =>
+          React.createElement(SweepCard, { key: email.id, email })
+        )
+      )
+    )
+  );
+}
+
+// --- UndoToast ---
+function UndoToast() {
+  const { undoAction, undoLastAction, clearUndo } = useStore();
+  const timerRef = useRef(null);
+
+  useEffect(() => {
+    if (undoAction) {
+      timerRef.current = setTimeout(() => clearUndo(), 5000);
+      return () => clearTimeout(timerRef.current);
+    }
+  }, [undoAction]);
+
+  if (!undoAction) return null;
+
+  const handleUndo = () => {
+    clearTimeout(timerRef.current);
+    undoLastAction();
+  };
+
+  const undoMessages = {
+    exempt: 'exempted from sweep',
+    archive: 'archived',
+    delete: 'deleted',
+    moveToSweep: 'moved to sweep',
+  };
+  const msg = undoMessages[undoAction.type] || 'removed';
+
+  return React.createElement('div', { className: 'undo-toast', key: undoAction.timestamp },
+    React.createElement('span', { className: 'undo-toast-text' },
+      `"${undoAction.email.subject}" ${msg}`
+    ),
+    React.createElement('button', { className: 'undo-btn', onClick: handleUndo }, 'Undo'),
+    React.createElement('div', { className: 'undo-progress', key: undoAction.timestamp })
+  );
+}
+
+// --- ContextMenu ---
+function ContextMenu() {
+  const { contextMenu, closeContextMenu, emails, toggleRead, toggleStar, archiveEmail, deleteEmail, moveToSweep, openSweepRuleEditor } = useStore();
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handleClick = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) closeContextMenu();
+    };
+    const handleEscape = (e) => { if (e.key === 'Escape') closeContextMenu(); };
+    const handleScroll = () => closeContextMenu();
+    document.addEventListener('mousedown', handleClick);
+    document.addEventListener('keydown', handleEscape);
+    document.addEventListener('scroll', handleScroll, true);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('keydown', handleEscape);
+      document.removeEventListener('scroll', handleScroll, true);
+    };
+  }, [contextMenu]);
+
+  if (!contextMenu) return null;
+
+  const email = emails.find(e => e.id === contextMenu.emailId);
+  if (!email) return null;
+
+  // Viewport clamping
+  const menuW = 210, menuH = 230;
+  const x = Math.min(contextMenu.x, window.innerWidth - menuW - 8);
+  const y = Math.min(contextMenu.y, window.innerHeight - menuH - 8);
+
+  const item = (icon, label, onClick, danger) =>
+    React.createElement('div', {
+      className: `context-menu-item${danger ? ' danger' : ''}`,
+      onClick: () => { onClick(); closeContextMenu(); },
+    },
+      React.createElement(icon),
+      React.createElement('span', null, label)
+    );
+
+  return React.createElement('div', {
+    ref: menuRef,
+    className: 'context-menu',
+    style: { left: x, top: y },
+  },
+    item(email.unread ? Icons.EnvelopeOpen : Icons.Envelope, email.unread ? 'Mark as read' : 'Mark as unread', () => toggleRead(email.id)),
+    item(Icons.Star, email.starred ? 'Unstar' : 'Star', () => toggleStar(email.id)),
+    item(Icons.Archive, 'Archive', () => archiveEmail(email.id)),
+    item(Icons.Sweep, 'Move to Sweep', () => moveToSweep(email.id)),
+    item(Icons.Trash, 'Delete', () => deleteEmail(email.id), true),
+    React.createElement('div', { className: 'context-menu-separator' }),
+    item(Icons.Sweep, 'Create Sweep Rule\u2026', () => {
+      openSweepRuleEditor(contextMenu.emailId);
+    })
+  );
+}
+
+// --- ColumnCriteriaEditor ---
+function ColumnCriteriaEditor() {
+  const { editingColumnId, columns, closeCriteriaEditor } = useStore();
+  const column = columns.find(c => c.id === editingColumnId);
+
+  const [criteria, setCriteria] = useState([]);
+  const [logic, setLogic] = useState('and');
+
+  useEffect(() => {
+    if (column) {
+      setCriteria(column.criteria || []);
+      setLogic(column.criteriaLogic || 'and');
+    }
+  }, [editingColumnId]);
+
+  if (!column) return null;
+
+  const addRow = () => setCriteria([...criteria, { field: 'from', op: 'contains', value: '' }]);
+  const removeRow = (i) => setCriteria(criteria.filter((_, idx) => idx !== i));
+  const updateRow = (i, key, val) => setCriteria(criteria.map((r, idx) => idx === i ? { ...r, [key]: val } : r));
+
+  return React.createElement('div', { className: 'modal-overlay', onClick: (e) => { if (e.target === e.currentTarget) closeCriteriaEditor(); } },
+    React.createElement('div', { className: 'criteria-editor' },
+      React.createElement('div', { className: 'criteria-header' },
+        React.createElement('span', { className: 'criteria-title' }, `${column.icon} ${column.name} — Filters`),
+        React.createElement('button', { className: 'criteria-close', onClick: closeCriteriaEditor },
+          React.createElement(Icons.Close)
+        )
+      ),
+      React.createElement('div', { className: 'criteria-body' },
+        React.createElement('div', { className: 'filter-group' },
+          React.createElement('div', { className: 'filter-group-header' },
+            React.createElement('button', {
+              className: `filter-logic-badge ${logic}`,
+              onClick: () => setLogic(logic === 'and' ? 'or' : 'and'),
+            }, logic),
+            React.createElement('span', {
+              style: { fontSize: '11px', color: 'var(--text-tertiary)' }
+            }, 'Click to toggle logic')
+          ),
+          criteria.map((row, i) =>
+            React.createElement('div', { key: i, className: 'filter-row' },
+              React.createElement('select', {
+                className: 'filter-select',
+                value: row.field,
+                onChange: (e) => updateRow(i, 'field', e.target.value),
+              },
+                React.createElement('option', { value: 'from' }, 'From'),
+                React.createElement('option', { value: 'to' }, 'To'),
+                React.createElement('option', { value: 'subject' }, 'Subject'),
+                React.createElement('option', { value: 'label' }, 'Label'),
+                React.createElement('option', { value: 'body' }, 'Body')
+              ),
+              React.createElement('select', {
+                className: 'filter-select',
+                value: row.op,
+                onChange: (e) => updateRow(i, 'op', e.target.value),
+              },
+                React.createElement('option', { value: 'contains' }, 'contains'),
+                React.createElement('option', { value: 'equals' }, 'equals'),
+                React.createElement('option', { value: 'starts_with' }, 'starts with'),
+                React.createElement('option', { value: 'not_contains' }, 'not contains')
+              ),
+              React.createElement('input', {
+                className: 'filter-input',
+                value: row.value,
+                onChange: (e) => updateRow(i, 'value', e.target.value),
+                placeholder: 'Value...',
+              }),
+              React.createElement('button', {
+                className: 'filter-remove-btn',
+                onClick: () => removeRow(i),
+              }, React.createElement(Icons.Minus))
+            )
+          ),
+          React.createElement('button', { className: 'add-filter-btn', onClick: addRow },
+            React.createElement(Icons.Plus), ' Add condition'
+          )
+        )
+      ),
+      React.createElement('div', { className: 'criteria-footer' },
+        React.createElement('button', { className: 'btn-secondary', onClick: closeCriteriaEditor }, 'Cancel'),
+        React.createElement('button', { className: 'btn-primary', onClick: closeCriteriaEditor }, 'Apply')
+      )
+    )
+  );
+}
+
+// --- SweepRuleEditor ---
+function SweepRuleEditor() {
+  const { sweepRuleEditor, closeSweepRuleEditor, addSweepRule, applySweepAction, sweepDelayHours } = useStore();
+  const [selectedAction, setSelectedAction] = useState('alwaysSweep');
+  const [delayHours, setDelayHours] = useState(sweepDelayHours);
+
+  useEffect(() => {
+    if (sweepRuleEditor) {
+      setSelectedAction('alwaysSweep');
+      setDelayHours(sweepDelayHours);
+    }
+  }, [sweepRuleEditor]);
+
+  if (!sweepRuleEditor) return null;
+
+  const { sender } = sweepRuleEditor;
+  const isDanger = selectedAction === 'alwaysDelete';
+
+  const handleApply = () => {
+    applySweepAction(sender, selectedAction, delayHours);
+    if (selectedAction !== 'moveAllToSweep') {
+      const actionLabels = {
+        alwaysSweep: 'Always move to Sweep',
+        keepLatest: 'Keep only the latest',
+        alwaysDelete: 'Always delete',
+      };
+      addSweepRule({
+        name: sender,
+        detail: actionLabels[selectedAction],
+        sender: sender,
+        action: selectedAction,
+        delayHours: isDanger ? 0 : delayHours,
+      });
+    }
+    closeSweepRuleEditor();
+  };
+
+  const options = [
+    { key: 'moveAllToSweep', title: 'Move all to Sweep', desc: 'One-time bulk move of all messages from this sender', badge: 'One-time' },
+    { key: 'alwaysSweep', title: 'Always move to Sweep', desc: 'Automatically sweep future messages from this sender', badge: 'Persistent' },
+    { key: 'keepLatest', title: 'Keep only the latest', desc: 'Always keep the newest message, sweep the rest', badge: 'Persistent' },
+    { key: 'alwaysDelete', title: 'Always delete', desc: 'Permanently delete all messages from this sender', badge: 'Persistent', danger: true },
+  ];
+
+  return React.createElement('div', {
+    className: 'modal-overlay',
+    onClick: (e) => { if (e.target === e.currentTarget) closeSweepRuleEditor(); },
+  },
+    React.createElement('div', { className: 'criteria-editor' },
+      // Header
+      React.createElement('div', { className: 'criteria-header' },
+        React.createElement('span', { className: 'criteria-title' }, 'Create Sweep Rule'),
+        React.createElement('button', { className: 'criteria-close', onClick: closeSweepRuleEditor },
+          React.createElement(Icons.Close)
+        )
+      ),
+      // Body
+      React.createElement('div', { className: 'criteria-body' },
+        // Sender display
+        React.createElement('div', { className: 'sweep-rule-sender' },
+          React.createElement(Icons.Envelope),
+          React.createElement('span', { className: 'sweep-rule-sender-name' }, sender)
+        ),
+        // Radio options
+        React.createElement('div', { className: 'sweep-rule-options' },
+          options.map(opt =>
+            React.createElement('div', {
+              key: opt.key,
+              className: `sweep-rule-option${selectedAction === opt.key ? ' selected' : ''}${opt.danger ? ' danger' : ''}`,
+              onClick: () => setSelectedAction(opt.key),
+            },
+              React.createElement('div', { className: 'sweep-rule-option-radio' }),
+              React.createElement('div', { className: 'sweep-rule-option-content' },
+                React.createElement('div', { className: 'sweep-rule-option-title' },
+                  opt.title,
+                  React.createElement('span', { className: 'sweep-rule-option-badge' }, opt.badge)
+                ),
+                React.createElement('div', { className: 'sweep-rule-option-desc' }, opt.desc)
+              )
+            )
+          )
+        ),
+        // Delay dropdown (hidden for delete)
+        !isDanger && React.createElement('div', { className: 'sweep-rule-delay' },
+          React.createElement('label', null, 'Sweep delay'),
+          React.createElement('select', {
+            value: String(delayHours),
+            onChange: (e) => setDelayHours(Number(e.target.value)),
+          },
+            React.createElement('option', { value: '1' }, '1 hour'),
+            React.createElement('option', { value: '6' }, '6 hours'),
+            React.createElement('option', { value: '12' }, '12 hours'),
+            React.createElement('option', { value: '24' }, '24 hours'),
+            React.createElement('option', { value: '48' }, '48 hours'),
+            React.createElement('option', { value: '168' }, '7 days')
+          )
+        )
+      ),
+      // Footer
+      React.createElement('div', { className: 'criteria-footer' },
+        React.createElement('button', { className: 'btn-secondary', onClick: closeSweepRuleEditor }, 'Cancel'),
+        React.createElement('button', {
+          className: isDanger ? 'btn-danger' : 'btn-primary',
+          onClick: handleApply,
+        }, isDanger ? 'Delete All' : 'Apply')
+      )
+    )
+  );
+}
+
+// --- SettingsPanel ---
+const SETTINGS_SECTIONS = [
+  { id: 'accounts', name: 'Accounts', icon: '👤' },
+  { id: 'columns', name: 'Columns', icon: '📋' },
+  { id: 'sweep', name: 'Sweep Rules', icon: '🧹' },
+  { id: 'notifications', name: 'Notifications', icon: '🔔' },
+  { id: 'appearance', name: 'Appearance', icon: '🎨' },
+  { id: 'shortcuts', name: 'Shortcuts', icon: '⌨️' },
+];
+
+function SettingsAccountRow({ account }) {
+  const renameAccount = useStore(s => s.renameAccount);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(account.name);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (editing && inputRef.current) inputRef.current.focus();
+  }, [editing]);
+
+  const commit = () => {
+    const trimmed = draft.trim();
+    if (trimmed && trimmed !== account.name) renameAccount(account.id, trimmed);
+    else setDraft(account.name);
+    setEditing(false);
+  };
+
+  return React.createElement(React.Fragment, null,
+    React.createElement('span', { className: 'drag-handle-wrap' }, React.createElement(Icons.DragHandle)),
+    React.createElement('span', { className: 'settings-account-dot', style: { background: account.color } }),
+    React.createElement('div', { className: 'settings-account-info' },
+      editing
+        ? React.createElement('input', {
+            ref: inputRef,
+            className: 'settings-account-name-input',
+            value: draft,
+            onChange: (e) => setDraft(e.target.value),
+            onBlur: commit,
+            onKeyDown: (e) => {
+              if (e.key === 'Enter') commit();
+              if (e.key === 'Escape') { setDraft(account.name); setEditing(false); }
+            },
+          })
+        : React.createElement('div', {
+            className: 'settings-account-name editable',
+            onClick: () => { setDraft(account.name); setEditing(true); },
+          }, account.name, React.createElement('span', { className: 'settings-account-provider' }, ` (${account.provider})`)),
+      React.createElement('div', { className: 'settings-account-email' }, account.email)
+    ),
+    React.createElement('span', { className: 'settings-account-status' }, 'synced'),
+    React.createElement('button', { className: 'settings-account-remove' }, 'Remove')
+  );
+}
+
+function SettingsAccounts({ accounts }) {
+  const reorderAccounts = useStore(s => s.reorderAccounts);
+  return React.createElement(React.Fragment, null,
+    React.createElement('div', { className: 'settings-content-title' }, 'Accounts'),
+    React.createElement('div', { className: 'settings-content-desc' }, 'Manage connected email accounts. Add Gmail, Outlook, or any IMAP provider. Drag to reorder.'),
+    React.createElement(Reorder.Group, {
+      as: 'div',
+      axis: 'y',
+      values: accounts,
+      onReorder: reorderAccounts,
+      className: 'settings-card',
+    },
+      accounts.map(a =>
+        React.createElement(Reorder.Item, {
+          key: a.id,
+          value: a,
+          as: 'div',
+          className: 'settings-card-row settings-account-draggable',
+          whileDrag: { scale: 1.01, boxShadow: '0 4px 16px rgba(0,0,0,0.2)', zIndex: 10 },
+        },
+          React.createElement(SettingsAccountRow, { account: a })
+        )
+      ),
+      React.createElement('button', { className: 'settings-add-btn' },
+        React.createElement(Icons.Plus), ' Add Account'
+      )
+    )
+  );
+}
+
+function SettingsColumns({ columns }) {
+  return React.createElement(React.Fragment, null,
+    React.createElement('div', { className: 'settings-content-title' }, 'Columns'),
+    React.createElement('div', { className: 'settings-content-desc' }, 'Configure your deck columns, their order, and filter criteria.'),
+    React.createElement('div', { className: 'settings-card' },
+      columns.map(col =>
+        React.createElement('div', { key: col.id, className: 'settings-card-row', style: { cursor: 'pointer' } },
+          React.createElement('span', { style: { fontSize: '15px', width: '20px', textAlign: 'center' } }, col.icon),
+          React.createElement('div', { style: { flex: 1 } },
+            React.createElement('div', { className: 'settings-account-name' }, col.name),
+            React.createElement('div', { className: 'settings-account-email' },
+              `${col.criteria.length} filter rule${col.criteria.length !== 1 ? 's' : ''}`
+            )
+          ),
+          React.createElement('span', {
+            style: { width: '10px', height: '10px', borderRadius: '2px', background: col.accent }
+          }),
+          React.createElement(Icons.ChevronRight)
+        )
+      ),
+      React.createElement('button', { className: 'settings-add-btn' },
+        React.createElement(Icons.Plus), ' Add Column'
+      )
+    )
+  );
+}
+
+function SettingsSweepRules({ sweepRules, toggleSweepRule }) {
+  const { sweepDelayHours, setSweepDelayHours } = useStore();
+  return React.createElement(React.Fragment, null,
+    React.createElement('div', { className: 'settings-content-title' }, 'Sweep Rules'),
+    React.createElement('div', { className: 'settings-content-desc' }, 'Automatically archive emails that match these rules after a set time.'),
+    React.createElement('div', { className: 'settings-card' },
+      React.createElement('div', { className: 'settings-option' },
+        React.createElement('div', { className: 'settings-option-info' },
+          React.createElement('div', { className: 'settings-option-label' }, 'Default sweep delay'),
+          React.createElement('div', { className: 'settings-option-desc' }, 'How long emails stay in Sweep before being archived')
+        ),
+        React.createElement('select', {
+          className: 'settings-select',
+          value: String(sweepDelayHours),
+          onChange: (e) => setSweepDelayHours(Number(e.target.value)),
+        },
+          React.createElement('option', { value: '1' }, '1 hour'),
+          React.createElement('option', { value: '6' }, '6 hours'),
+          React.createElement('option', { value: '12' }, '12 hours'),
+          React.createElement('option', { value: '24' }, '24 hours'),
+          React.createElement('option', { value: '48' }, '2 days'),
+          React.createElement('option', { value: '168' }, '7 days')
+        )
+      )
+    ),
+    React.createElement('div', { className: 'settings-content-title', style: { marginTop: '20px' } }, 'Rules'),
+    React.createElement('div', { className: 'settings-card' },
+      sweepRules.map(rule =>
+        React.createElement('div', { key: rule.id, className: 'sweep-rule' },
+          React.createElement('div', { className: 'sweep-rule-top' },
+            React.createElement('span', { className: 'sweep-rule-name' }, rule.name),
+            React.createElement('button', {
+              className: `sweep-rule-toggle ${rule.enabled ? 'active' : ''}`,
+              onClick: () => toggleSweepRule(rule.id),
+            })
+          ),
+          React.createElement('div', { className: 'sweep-rule-detail' }, rule.detail),
+          React.createElement('div', { className: 'sweep-rule-meta' },
+            React.createElement('span', { className: 'sweep-rule-tag' }, rule.enabled ? 'active' : 'paused'),
+            React.createElement('span', { className: 'sweep-rule-tag' }, 'all accounts')
+          )
+        )
+      ),
+      React.createElement('button', { className: 'settings-add-btn' },
+        React.createElement(Icons.Plus), ' Add Rule'
+      )
+    )
+  );
+}
+
+function SettingsNotifications() {
+  return React.createElement(React.Fragment, null,
+    React.createElement('div', { className: 'settings-content-title' }, 'Notifications'),
+    React.createElement('div', { className: 'settings-content-desc' }, 'Control how and when you get notified about new emails.'),
+    React.createElement('div', { className: 'settings-card' },
+      React.createElement('div', { className: 'settings-option' },
+        React.createElement('div', { className: 'settings-option-info' },
+          React.createElement('div', { className: 'settings-option-label' }, 'Desktop notifications'),
+          React.createElement('div', { className: 'settings-option-desc' }, 'Show system notifications for new emails')
+        ),
+        React.createElement('button', { className: 'sweep-rule-toggle active' })
+      ),
+      React.createElement('div', { className: 'settings-option' },
+        React.createElement('div', { className: 'settings-option-info' },
+          React.createElement('div', { className: 'settings-option-label' }, 'Sound'),
+          React.createElement('div', { className: 'settings-option-desc' }, 'Play a sound when new emails arrive')
+        ),
+        React.createElement('button', { className: 'sweep-rule-toggle' })
+      ),
+      React.createElement('div', { className: 'settings-option' },
+        React.createElement('div', { className: 'settings-option-info' },
+          React.createElement('div', { className: 'settings-option-label' }, 'Notify for'),
+          React.createElement('div', { className: 'settings-option-desc' }, 'Which columns trigger notifications')
+        ),
+        React.createElement('select', { className: 'settings-select', defaultValue: 'all' },
+          React.createElement('option', { value: 'all' }, 'All columns'),
+          React.createElement('option', { value: 'team' }, 'Team & Clients only'),
+          React.createElement('option', { value: 'none' }, 'None')
+        )
+      )
+    )
+  );
+}
+
+function SettingsAppearance() {
+  const { theme, setTheme } = useStore();
+  return React.createElement(React.Fragment, null,
+    React.createElement('div', { className: 'settings-content-title' }, 'Appearance'),
+    React.createElement('div', { className: 'settings-content-desc' }, 'Customize the look and feel of MailDeck.'),
+    React.createElement('div', { className: 'settings-card' },
+      React.createElement('div', { className: 'settings-option' },
+        React.createElement('div', { className: 'settings-option-info' },
+          React.createElement('div', { className: 'settings-option-label' }, 'Theme'),
+          React.createElement('div', { className: 'settings-option-desc' }, 'Choose your preferred color scheme')
+        ),
+        React.createElement('select', {
+          className: 'settings-select',
+          value: theme,
+          onChange: (e) => setTheme(e.target.value),
+        },
+          React.createElement('option', { value: 'dark' }, 'Dark'),
+          React.createElement('option', { value: 'light' }, 'Light'),
+          React.createElement('option', { value: 'system' }, 'System')
+        )
+      ),
+      React.createElement('div', { className: 'settings-option' },
+        React.createElement('div', { className: 'settings-option-info' },
+          React.createElement('div', { className: 'settings-option-label' }, 'Column width'),
+          React.createElement('div', { className: 'settings-option-desc' }, 'Default width for deck columns')
+        ),
+        React.createElement('select', { className: 'settings-select', defaultValue: '340' },
+          React.createElement('option', { value: '300' }, 'Narrow (300px)'),
+          React.createElement('option', { value: '340' }, 'Default (340px)'),
+          React.createElement('option', { value: '400' }, 'Wide (400px)')
+        )
+      ),
+      React.createElement('div', { className: 'settings-option' },
+        React.createElement('div', { className: 'settings-option-info' },
+          React.createElement('div', { className: 'settings-option-label' }, 'Font size'),
+          React.createElement('div', { className: 'settings-option-desc' }, 'Base font size for the interface')
+        ),
+        React.createElement('select', { className: 'settings-select', defaultValue: '14' },
+          React.createElement('option', { value: '12' }, 'Compact (12px)'),
+          React.createElement('option', { value: '14' }, 'Default (14px)'),
+          React.createElement('option', { value: '16' }, 'Comfortable (16px)')
+        )
+      )
+    )
+  );
+}
+
+function SettingsShortcuts() {
+  const shortcuts = [
+    { key: '⌘ K', desc: 'Command palette' },
+    { key: '⌘ 1-5', desc: 'Jump to column' },
+    { key: '⌘ ,', desc: 'Open settings' },
+    { key: 'J / K', desc: 'Navigate emails' },
+    { key: 'E', desc: 'Archive email' },
+    { key: 'R', desc: 'Reply' },
+    { key: '⌘ ⇧ F', desc: 'Search all' },
+    { key: 'X', desc: 'Exempt from sweep' },
+  ];
+  return React.createElement(React.Fragment, null,
+    React.createElement('div', { className: 'settings-content-title' }, 'Keyboard Shortcuts'),
+    React.createElement('div', { className: 'settings-content-desc' }, 'Navigate MailDeck without touching the mouse.'),
+    React.createElement('div', { className: 'settings-card' },
+      shortcuts.map((s, i) =>
+        React.createElement('div', { key: i, className: 'settings-option' },
+          React.createElement('div', { className: 'settings-option-label', style: { flex: 1 } }, s.desc),
+          React.createElement('span', { className: 'sweep-rule-tag', style: { fontFamily: 'var(--font-mono)', letterSpacing: '0.04em' } }, s.key)
+        )
+      )
+    )
+  );
+}
+
+function SettingsPanel() {
+  const { isSettingsOpen, toggleSettings, settingsSection, setSettingsSection, accounts, columns, sweepRules, toggleSweepRule } = useStore();
+  if (!isSettingsOpen) return null;
+
+  let content;
+  switch (settingsSection) {
+    case 'accounts': content = React.createElement(SettingsAccounts, { accounts }); break;
+    case 'columns': content = React.createElement(SettingsColumns, { columns }); break;
+    case 'sweep': content = React.createElement(SettingsSweepRules, { sweepRules, toggleSweepRule }); break;
+    case 'notifications': content = React.createElement(SettingsNotifications); break;
+    case 'appearance': content = React.createElement(SettingsAppearance); break;
+    case 'shortcuts': content = React.createElement(SettingsShortcuts); break;
+    default: content = React.createElement(SettingsAccounts, { accounts });
+  }
+
+  return React.createElement('div', { className: 'settings-screen' },
+    React.createElement('div', { className: 'settings-topbar' },
+      React.createElement('button', { className: 'settings-back-btn', onClick: toggleSettings },
+        React.createElement(Icons.ChevronLeft),
+        'Back to Deck'
+      ),
+      React.createElement('div', { className: 'topbar-divider' }),
+      React.createElement('span', { className: 'settings-topbar-title' }, 'Settings')
+    ),
+    React.createElement('div', { className: 'settings-layout' },
+      React.createElement('nav', { className: 'settings-nav' },
+        React.createElement('div', { className: 'settings-nav-label' }, 'Settings'),
+        SETTINGS_SECTIONS.map(s =>
+          React.createElement('button', {
+            key: s.id,
+            className: `settings-nav-item ${settingsSection === s.id ? 'active' : ''}`,
+            onClick: () => setSettingsSection(s.id),
+          },
+            React.createElement('span', { className: 'settings-nav-icon' }, s.icon),
+            s.name
+          )
+        )
+      ),
+      React.createElement('div', { className: 'settings-content' }, content)
+    )
+  );
+}
+
+// --- InboxColumn ---
+function InboxColumn({ accountId }) {
+  const { emails, accounts, disabledAccountIds } = useStore();
+
+  const columnEmails = useMemo(() => {
+    let filtered;
+    if (accountId) {
+      filtered = emails.filter(e => e.accountId === accountId && !disabledAccountIds.has(e.accountId));
+    } else {
+      filtered = emails.filter(e => !disabledAccountIds.has(e.accountId));
+    }
+    return [...filtered].sort((a, b) => b.time - a.time);
+  }, [emails, accountId, disabledAccountIds]);
+
+  const account = accountId ? accounts.find(a => a.id === accountId) : null;
+  const accent = account ? account.color : '#3b82f6';
+  const icon = account
+    ? React.createElement('span', { style: { display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: account.color } })
+    : '📥';
+  const name = account ? account.name : 'All Inboxes';
+  const unreadCount = columnEmails.filter(e => e.unread).length;
+
+  return React.createElement('div', { className: 'column', style: { '--column-accent': accent } },
+    React.createElement('div', { className: 'column-header', style: { borderTopColor: accent } },
+      React.createElement('span', { className: 'column-icon' }, icon),
+      React.createElement('span', { className: 'column-name' },
+        name,
+        account && React.createElement('span', {
+          style: { display: 'block', fontSize: '0.7rem', opacity: 0.6, fontWeight: 400 },
+        }, account.email)
+      ),
+      React.createElement('span', { className: 'column-count' }, unreadCount > 0 ? unreadCount : columnEmails.length)
+    ),
+    React.createElement('div', { className: 'column-emails' },
+      React.createElement(AnimatePresence, { initial: false },
+        columnEmails.map(email =>
+          React.createElement(EmailCard, { key: email.id, email, accent, accounts, columnId: null })
+        )
+      )
+    )
+  );
+}
+
+// --- InboxesLayout ---
+function InboxesLayout() {
+  const accounts = useStore(s => s.accounts);
+
+  return React.createElement('div', { className: 'deck-layout' },
+    React.createElement(InboxColumn, { key: 'all-inboxes', accountId: null }),
+    accounts.map(a =>
+      React.createElement(InboxColumn, { key: a.id, accountId: a.id })
+    )
+  );
+}
+
+// --- StreamsLayout ---
+function StreamsLayout() {
+  const { columns, reorderColumns } = useStore();
+
+  return React.createElement('div', { className: 'deck-layout' },
+    React.createElement(Reorder.Group, {
+      as: 'div',
+      axis: 'x',
+      values: columns,
+      onReorder: reorderColumns,
+      className: 'deck-columns-reorder',
+    },
+      columns.map(col =>
+        React.createElement(Reorder.Item, {
+          key: col.id,
+          value: col,
+          as: 'div',
+          className: 'column-reorder-item',
+          whileDrag: { scale: 1.02, boxShadow: '0 8px 30px rgba(0,0,0,0.3)', zIndex: 10 },
+        },
+          React.createElement(Column, { column: col })
+        )
+      )
+    ),
+    React.createElement(SweepColumn, { key: 'sweep' })
+  );
+}
+
+// --- DeckLayout ---
+function DeckLayout() {
+  const activeViewId = useStore(s => s.activeViewId);
+  if (activeViewId === 'inboxes') return React.createElement(InboxesLayout);
+  return React.createElement(StreamsLayout);
+}
+
+// --- App ---
+function App() {
+  const tickSweepCountdowns = useStore(s => s.tickSweepCountdowns);
+  const addNewEmail = useStore(s => s.addNewEmail);
+  const theme = useStore(s => s.theme);
+
+  // Apply theme to document
+  useEffect(() => {
+    const apply = (resolved) => document.documentElement.setAttribute('data-theme', resolved);
+    if (theme === 'system') {
+      const mq = window.matchMedia('(prefers-color-scheme: dark)');
+      apply(mq.matches ? 'dark' : 'light');
+      const handler = (e) => apply(e.matches ? 'dark' : 'light');
+      mq.addEventListener('change', handler);
+      return () => mq.removeEventListener('change', handler);
+    }
+    apply(theme);
+  }, [theme]);
+
+  // Tick sweep countdowns every second
+  useEffect(() => {
+    const interval = setInterval(tickSweepCountdowns, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Simulate new email arrivals periodically
+  useEffect(() => {
+    const newEmailTemplates = [
+      { columnId: 'github', accountId: 'channel1', sender: 'renovate[bot]', subject: 'Update dependency @types/node to v20.11.5', snippet: 'This PR contains the following updates...', unread: true },
+      { columnId: 'team', accountId: 'syzmail', sender: 'Amy Chen', subject: 'Quick sync on API design', snippet: 'Hey, wanted to run a few things by you about the...', unread: true },
+      { columnId: 'newsletters', accountId: 'szabielski', sender: 'Hacker News Digest', subject: 'Top stories today', snippet: 'Show HN: I built a real-time collaborative...', unread: true },
+      { columnId: 'clients', accountId: 'scottz', sender: 'Diana Frost (Apex)', subject: 'Partnership proposal', snippet: 'We\'ve been evaluating your platform and would like to...', unread: true },
+    ];
+    let idx = 0;
+    const interval = setInterval(() => {
+      const template = newEmailTemplates[idx % newEmailTemplates.length];
+      addNewEmail({
+        ...template,
+        id: `new-${Date.now()}`,
+        time: Date.now(),
+      });
+      idx++;
+    }, 15000); // every 15 seconds
+
+    return () => clearInterval(interval);
+  }, []);
+
+  return React.createElement(React.Fragment, null,
+    React.createElement(TopBar),
+    React.createElement(DeckLayout),
+    React.createElement(ContextMenu),
+    React.createElement(SweepRuleEditor),
+    React.createElement(UndoToast),
+    React.createElement(ColumnCriteriaEditor),
+    React.createElement(SettingsPanel)
+  );
+}
+
+// ========================================
+// MOUNT
+// ========================================
+const root = createRoot(document.getElementById('root'));
+root.render(React.createElement(App));
+</script>
+</body>
+</html>
