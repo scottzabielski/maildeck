@@ -5,7 +5,7 @@ import { useStore } from '../store/index.ts';
 import { useEmailBody } from '../hooks/useEmailBody.ts';
 
 export function EmailViewer() {
-  const { selectedEmail, emails, accounts, deselectEmail, toggleStar, toggleRead, archiveEmail, deleteEmail } = useStore();
+  const { selectedEmail, emails, accounts, deselectEmail, toggleStar, toggleRead, archiveEmail, deleteEmail, openSweepRuleEditor } = useStore();
   const [copied, setCopied] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [iframeHeight, setIframeHeight] = useState(400);
@@ -125,6 +125,13 @@ export function EmailViewer() {
             title="Archive"
           >
             <Icons.Archive />
+          </button>
+          <button
+            className="email-viewer-action"
+            onClick={() => openSweepRuleEditor(email.id)}
+            title="Create Sweep Rule"
+          >
+            <Icons.Sweep />
           </button>
           <button
             className="email-viewer-action"
