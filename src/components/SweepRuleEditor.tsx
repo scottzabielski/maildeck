@@ -22,6 +22,7 @@ export function SweepRuleEditor() {
   const [criteriaLogic, setCriteriaLogic] = useState<'and' | 'or'>('and');
   const [selectedAction, setSelectedAction] = useState('archive');
   const [delayHours, setDelayHours] = useState(sweepDelayHours);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (sweepRuleEditor) {
@@ -101,6 +102,7 @@ export function SweepRuleEditor() {
   const handleApply = async () => {
     const validCriteria = criteria.filter(c => c.value.trim());
     if (validCriteria.length === 0) return;
+    setError(null);
 
     const ruleName = buildRuleName();
     const detail = selectedAction === 'delete'
@@ -117,16 +119,22 @@ export function SweepRuleEditor() {
 
       // Persist to DB
       if (!useMockData && user?.id) {
-        updateSweepRuleMutation.mutate({
-          id: ruleId,
-          user_id: user.id,
-          name: ruleName,
-          detail,
-          criteria: validCriteria,
-          criteria_logic: criteriaLogic,
-          action: selectedAction,
-          delay_hours: delayHours,
-        });
+        try {
+          await updateSweepRuleMutation.mutateAsync({
+            id: ruleId,
+            user_id: user.id,
+            name: ruleName,
+            detail,
+            criteria: validCriteria,
+            criteria_logic: criteriaLogic,
+            action: selectedAction,
+            delay_hours: delayHours,
+          });
+        } catch (err) {
+          console.error('[Sweep] Failed to update rule:', err);
+          setError('Failed to save rule. Please try again.');
+          return;
+        }
       }
 
       closeSweepRuleEditor();
@@ -134,7 +142,8 @@ export function SweepRuleEditor() {
     }
 
     if (useMockData || !user?.id) {
-      // Mock mode: update in-memory store only
+      // Mock mode or no auth: update in-memory store only
+      console.warn('[Sweep] No user auth, falling back to in-memory only. useMockData:', useMockData, 'user:', user?.id);
       applySweepAction(validCriteria, criteriaLogic, selectedAction, delayHours);
       addSweepRule({ name: ruleName, detail, criteria: validCriteria, criteriaLogic, action: selectedAction, delayHours });
     } else {
@@ -142,17 +151,24 @@ export function SweepRuleEditor() {
       const userId = user.id;
 
       // 1. Create sweep rule in DB
-      const createdRule = await createSweepRuleMutation.mutateAsync({
-        user_id: userId,
-        name: ruleName,
-        detail,
-        is_enabled: true,
-        sender_pattern: null,
-        criteria: validCriteria,
-        criteria_logic: criteriaLogic,
-        action: selectedAction,
-        delay_hours: delayHours,
-      });
+      let createdRule;
+      try {
+        createdRule = await createSweepRuleMutation.mutateAsync({
+          user_id: userId,
+          name: ruleName,
+          detail,
+          is_enabled: true,
+          sender_pattern: null,
+          criteria: validCriteria,
+          criteria_logic: criteriaLogic,
+          action: selectedAction,
+          delay_hours: delayHours,
+        });
+      } catch (err) {
+        console.error('[Sweep] Failed to create rule:', err);
+        setError('Failed to create rule. Please try again.');
+        return;
+      }
 
       // 2. Find all matching emails and add them to the sweep queue
       const currentEmails = useStore.getState().emails;
@@ -161,18 +177,18 @@ export function SweepRuleEditor() {
         emailMatchesCriteria(e, validCriteria, criteriaLogic) && !sweepEmailIds.has(e.id)
       );
 
-      for (const email of matching) {
-        try {
-          await addToSweepQueueMutation.mutateAsync({
+      // Queue matching emails in parallel batches of 10
+      for (let i = 0; i < matching.length; i += 10) {
+        const batch = matching.slice(i, i + 10);
+        await Promise.all(batch.map(email =>
+          addToSweepQueueMutation.mutateAsync({
             userId,
             emailId: email.id,
             sweepRuleId: createdRule.id,
             action: selectedAction,
             delayHours,
-          });
-        } catch (err) {
-          console.error(`[Sweep] Failed to queue email ${email.id}:`, err);
-        }
+          }).catch(err => console.error(`[Sweep] Failed to queue email ${email.id}:`, err))
+        ));
       }
 
       // Also update in-memory store immediately for instant UI feedback
@@ -317,6 +333,7 @@ export function SweepRuleEditor() {
             </select>
           </div>
         </div>
+        {error && <div style={{ padding: '0 16px 8px', color: '#ef4444', fontSize: '12px' }}>{error}</div>}
         {/* Footer */}
         <div className="criteria-footer">
           <button className="btn-secondary" onClick={closeSweepRuleEditor}>Cancel</button>
