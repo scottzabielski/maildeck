@@ -137,6 +137,7 @@ export interface SweepRuleEditorState {
   subject: string;
   toEmail: string;
   columnId: string | null;
+  ruleId?: string;
 }
 
 export interface StreamEditorPrefill {
@@ -197,7 +198,9 @@ export interface StoreState {
   toggleSweepRule: (ruleId: string) => void;
   setSweepDelayHours: (hours: number) => void;
   openSweepRuleEditor: (emailId: string) => void;
+  openSweepRuleEditorForRule: (ruleId: string) => void;
   closeSweepRuleEditor: () => void;
+  updateSweepRule: (ruleId: string, updates: Partial<Omit<SweepRule, 'id'>>) => void;
   openStreamEditorFromEmail: (emailId: string) => void;
   addSweepRule: (rule: Omit<SweepRule, 'id' | 'enabled'>) => void;
   applySweepAction: (criteria: Criterion[], criteriaLogic: 'and' | 'or', action: string, delayHours: number) => void;
@@ -213,6 +216,11 @@ export interface StoreState {
   _persistColumnCreate?: (column: Column) => void;
   _persistColumnUpdate?: (columnId: string, updates: Partial<Omit<Column, 'id'>>) => void;
   _persistColumnDelete?: (columnId: string) => void;
+
+  // Pagination helpers injected by useSyncStore
+  _fetchNextPage?: () => void;
+  _hasNextPage?: boolean;
+  _isFetchingNextPage?: boolean;
 }
 
 // ========================================
@@ -432,7 +440,23 @@ export const useStore = create<StoreState>((set, get) => ({
       columnId: email.columnId || null,
     } });
   },
+  openSweepRuleEditorForRule: (ruleId) => {
+    const rule = get().sweepRules.find(r => r.id === ruleId);
+    if (!rule) return;
+    set({ sweepRuleEditor: {
+      emailId: '',
+      sender: '',
+      senderEmail: '',
+      subject: '',
+      toEmail: '',
+      columnId: null,
+      ruleId,
+    } });
+  },
   closeSweepRuleEditor: () => set({ sweepRuleEditor: null }),
+  updateSweepRule: (ruleId, updates) => set(s => ({
+    sweepRules: s.sweepRules.map(r => r.id === ruleId ? { ...r, ...updates } : r),
+  })),
 
   openStreamEditorFromEmail: (emailId) => {
     const email = get().emails.find(e => e.id === emailId);

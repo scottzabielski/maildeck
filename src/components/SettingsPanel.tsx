@@ -213,7 +213,7 @@ function formatCriteriaSummary(rule: SweepRule): string {
 }
 
 function SettingsSweepRules({ sweepRules, toggleSweepRule }: { sweepRules: SweepRule[]; toggleSweepRule: (id: string) => void }) {
-  const { sweepDelayHours, setSweepDelayHours } = useStore();
+  const { sweepDelayHours, setSweepDelayHours, openSweepRuleEditorForRule } = useStore();
   const { user } = useAuth();
   const deleteMutation = useDeleteSweepRule();
 
@@ -254,7 +254,18 @@ function SettingsSweepRules({ sweepRules, toggleSweepRule }: { sweepRules: Sweep
         {sweepRules.map(rule => (
           <div key={rule.id} className="sweep-rule">
             <div className="sweep-rule-top">
-              <span className="sweep-rule-name">{rule.name}</span>
+              <span
+                className="sweep-rule-name"
+                style={{ cursor: 'pointer' }}
+                onClick={() => openSweepRuleEditorForRule(rule.id)}
+                title="Click to edit rule"
+              >
+                {rule.name}
+                <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 6, opacity: 0.4, verticalAlign: 'middle' }}>
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                </svg>
+              </span>
               <button
                 className={`sweep-rule-toggle ${rule.enabled ? 'active' : ''}`}
                 onClick={() => toggleSweepRule(rule.id)}
@@ -267,7 +278,11 @@ function SettingsSweepRules({ sweepRules, toggleSweepRule }: { sweepRules: Sweep
                 <Icons.Close />
               </button>
             </div>
-            <div className="sweep-rule-detail">
+            <div
+              className="sweep-rule-detail"
+              style={{ cursor: 'pointer' }}
+              onClick={() => openSweepRuleEditorForRule(rule.id)}
+            >
               {formatCriteriaSummary(rule)}
             </div>
             <div className="sweep-rule-detail">{rule.detail}</div>

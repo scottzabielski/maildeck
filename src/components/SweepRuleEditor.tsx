@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Icons } from './ui/Icons.tsx';
 import { useStore } from '../store/index.ts';
 import { useAuth } from '../hooks/useAuth.ts';
-import { useCreateSweepRule } from '../hooks/useSweepRules.ts';
+import { useCreateSweepRule, useUpdateSweepRule } from '../hooks/useSweepRules.ts';
 import { useAddToSweepQueue } from '../hooks/useSweepQueue.ts';
 import { emailMatchesCriteria } from '../lib/emailFilter.ts';
 import type { Criterion } from '../types/index.ts';
@@ -10,10 +10,13 @@ import type { Criterion } from '../types/index.ts';
 const useMockData = import.meta.env.VITE_USE_MOCK_DATA === 'true';
 
 export function SweepRuleEditor() {
-  const { sweepRuleEditor, closeSweepRuleEditor, addSweepRule, applySweepAction, sweepDelayHours, emails, columns } = useStore();
+  const { sweepRuleEditor, closeSweepRuleEditor, addSweepRule, applySweepAction, sweepDelayHours, emails, columns, sweepRules, updateSweepRule } = useStore();
   const { user } = useAuth();
   const createSweepRuleMutation = useCreateSweepRule();
+  const updateSweepRuleMutation = useUpdateSweepRule();
   const addToSweepQueueMutation = useAddToSweepQueue();
+
+  const isEditMode = !!sweepRuleEditor?.ruleId;
 
   const [criteria, setCriteria] = useState<Criterion[]>([]);
   const [criteriaLogic, setCriteriaLogic] = useState<'and' | 'or'>('and');
@@ -22,11 +25,23 @@ export function SweepRuleEditor() {
 
   useEffect(() => {
     if (sweepRuleEditor) {
-      const initialValue = sweepRuleEditor.senderEmail || sweepRuleEditor.sender;
-      setCriteria([{ field: 'from', op: 'contains', value: initialValue }]);
-      setCriteriaLogic('and');
-      setSelectedAction('archive');
-      setDelayHours(sweepDelayHours);
+      if (sweepRuleEditor.ruleId) {
+        // Edit mode: pre-fill from existing rule
+        const rule = sweepRules.find(r => r.id === sweepRuleEditor.ruleId);
+        if (rule) {
+          setCriteria(rule.criteria.map(c => ({ ...c })));
+          setCriteriaLogic(rule.criteriaLogic);
+          setSelectedAction(rule.action);
+          setDelayHours(rule.delayHours);
+        }
+      } else {
+        // Create mode: pre-fill from email
+        const initialValue = sweepRuleEditor.senderEmail || sweepRuleEditor.sender;
+        setCriteria([{ field: 'from', op: 'contains', value: initialValue }]);
+        setCriteriaLogic('and');
+        setSelectedAction('archive');
+        setDelayHours(sweepDelayHours);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sweepRuleEditor]);
@@ -92,6 +107,32 @@ export function SweepRuleEditor() {
       ? `Auto-delete after ${delayHours}h`
       : `Auto-archive after ${delayHours}h`;
 
+    if (isEditMode) {
+      // Edit mode: update existing rule
+      const ruleId = sweepRuleEditor!.ruleId!;
+      const updates = { name: ruleName, detail, criteria: validCriteria, criteriaLogic, action: selectedAction, delayHours };
+
+      // Update in-memory store immediately
+      updateSweepRule(ruleId, updates);
+
+      // Persist to DB
+      if (!useMockData && user?.id) {
+        updateSweepRuleMutation.mutate({
+          id: ruleId,
+          user_id: user.id,
+          name: ruleName,
+          detail,
+          criteria: validCriteria,
+          criteria_logic: criteriaLogic,
+          action: selectedAction,
+          delay_hours: delayHours,
+        });
+      }
+
+      closeSweepRuleEditor();
+      return;
+    }
+
     if (useMockData || !user?.id) {
       // Mock mode: update in-memory store only
       applySweepAction(validCriteria, criteriaLogic, selectedAction, delayHours);
@@ -143,7 +184,7 @@ export function SweepRuleEditor() {
   };
 
   const hasValidCriteria = criteria.some(c => c.value.trim());
-  const isApplying = createSweepRuleMutation.isPending || addToSweepQueueMutation.isPending;
+  const isApplying = createSweepRuleMutation.isPending || addToSweepQueueMutation.isPending || updateSweepRuleMutation.isPending;
 
   const options = [
     { key: 'archive', title: 'Archive', desc: 'Automatically archive matching messages after the delay', danger: false },
@@ -158,7 +199,7 @@ export function SweepRuleEditor() {
       <div className="criteria-editor">
         {/* Header */}
         <div className="criteria-header">
-          <span className="criteria-title">Create Sweep Rule</span>
+          <span className="criteria-title">{isEditMode ? 'Edit Sweep Rule' : 'Create Sweep Rule'}</span>
           <button className="criteria-close" onClick={closeSweepRuleEditor}>
             <Icons.Close />
           </button>
@@ -285,7 +326,7 @@ export function SweepRuleEditor() {
             disabled={!hasValidCriteria || isApplying}
             style={(!hasValidCriteria || isApplying) ? { opacity: 0.5, cursor: 'default' } : undefined}
           >
-            {isApplying ? 'Applying...' : isDanger ? 'Delete All' : 'Apply'}
+            {isApplying ? (isEditMode ? 'Saving...' : 'Applying...') : isEditMode ? 'Save' : isDanger ? 'Delete All' : 'Apply'}
           </button>
         </div>
       </div>
