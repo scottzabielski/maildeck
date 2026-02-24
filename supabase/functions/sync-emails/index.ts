@@ -160,17 +160,56 @@ async function gmailFullSync(
     pageToken = data.nextPageToken;
   } while (pageToken);
 
-  // Fetch message metadata sequentially in small batches to avoid rate limits
-  let synced = 0;
-  const batchSize = 5;
-
-  for (let i = 0; i < messageIds.length; i += batchSize) {
-    const batch = messageIds.slice(i, i + batchSize);
-    const messages = [];
-    for (const id of batch) {
-      const res = await gmailFetch(accessToken, `/messages/${id}?format=METADATA&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject`);
-      messages.push(await res.json());
+  // Query DB for already-synced message IDs (paginate to avoid max_rows limit)
+  const existingIds = new Set<string>();
+  const pageSize = 1000;
+  let offset = 0;
+  while (true) {
+    const { data: rows, error: qErr } = await supabase
+      .from('emails')
+      .select('provider_message_id')
+      .eq('account_id', accountId)
+      .range(offset, offset + pageSize - 1);
+    if (qErr) {
+      console.error('Error querying existing IDs:', qErr);
+      break;
     }
+    if (!rows || rows.length === 0) break;
+    for (const r of rows) existingIds.add(r.provider_message_id);
+    if (rows.length < pageSize) break;
+    offset += pageSize;
+  }
+
+  const remainingIds = messageIds.filter((id) => !existingIds.has(id));
+  console.log(`Full sync: ${messageIds.length} total IDs, ${existingIds.size} already synced, ${remainingIds.length} remaining`);
+
+  // If nothing left to fetch, store historyId — full sync is truly complete
+  if (remainingIds.length === 0) {
+    if (messageIds.length > 0) {
+      const res = await gmailFetch(accessToken, `/messages/${messageIds[0]}?format=MINIMAL`);
+      const latest = await res.json();
+      if (latest.historyId) {
+        await supabase
+          .from('email_accounts')
+          .update({ sync_history_id: latest.historyId })
+          .eq('id', accountId);
+      }
+    }
+    return 0;
+  }
+
+  // Fetch message metadata in parallel batches
+  let synced = 0;
+  const batchSize = 10;
+
+  for (let i = 0; i < remainingIds.length; i += batchSize) {
+    const batch = remainingIds.slice(i, i + batchSize);
+    const messages = await Promise.all(
+      batch.map(async (id) => {
+        const res = await gmailFetch(accessToken, `/messages/${id}?format=METADATA&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject`);
+        return res.json();
+      }),
+    );
 
     const rows = messages.map((msg) => gmailMessageToRow(msg, userId, accountId));
     const { error } = await supabase
@@ -179,18 +218,6 @@ async function gmailFullSync(
 
     if (error) console.error('Upsert batch error:', error);
     synced += rows.length;
-  }
-
-  // Store the latest historyId for incremental sync
-  if (messageIds.length > 0) {
-    const res = await gmailFetch(accessToken, `/messages/${messageIds[0]}?format=MINIMAL`);
-    const latest = await res.json();
-    if (latest.historyId) {
-      await supabase
-        .from('email_accounts')
-        .update({ sync_history_id: latest.historyId })
-        .eq('id', accountId);
-    }
   }
 
   return synced;
@@ -240,13 +267,14 @@ async function gmailIncrementalSync(
   let synced = 0;
   const uniqueAdded = [...new Set(addedIds)];
 
-  for (let i = 0; i < uniqueAdded.length; i += 5) {
-    const batch = uniqueAdded.slice(i, i + 5);
-    const messages = [];
-    for (const id of batch) {
-      const res = await gmailFetch(accessToken, `/messages/${id}?format=METADATA&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject`);
-      messages.push(await res.json());
-    }
+  for (let i = 0; i < uniqueAdded.length; i += 10) {
+    const batch = uniqueAdded.slice(i, i + 10);
+    const messages = await Promise.all(
+      batch.map(async (id) => {
+        const res = await gmailFetch(accessToken, `/messages/${id}?format=METADATA&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject`);
+        return res.json();
+      }),
+    );
 
     const rows = messages
       .filter((msg) => msg.id) // filter out any errors

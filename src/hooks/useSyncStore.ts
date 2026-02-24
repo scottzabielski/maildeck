@@ -190,6 +190,10 @@ export function useSyncStore() {
           await syncAccountMutation.mutateAsync({ accountId: acct.id, mode: 'full' });
         } catch (e) {
           console.error(`Sync failed for ${acct.email}:`, e);
+          // Remove from tracked set so it re-triggers on next poll cycle
+          syncedAccountsRef.current.delete(acct.id);
+          // Delay before allowing retry to prevent tight loop (~25s total with 15s poll)
+          await new Promise(r => setTimeout(r, 10000));
         }
         // Wait 2 seconds between accounts to avoid rate limits
         if (i < needsSync.length - 1) {
