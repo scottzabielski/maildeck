@@ -49,21 +49,31 @@ Deno.serve(async (req) => {
     // load the referenced column's criteria and flatten them
     const resolvedCriteria = await resolveStreamCriteria(admin, criteria, user_id);
 
-    // Build the query against the full emails table
-    let query = admin
-      .from('emails')
-      .select('id, received_at')
-      .eq('user_id', user_id)
-      .eq('is_archived', false)
-      .eq('is_deleted', false);
+    // Build the query against the full emails table, paginating to avoid the
+    // default 1000-row limit in the Supabase JS client.
+    const matchingEmails: { id: string; received_at: string }[] = [];
+    const PAGE_SIZE = 1000;
+    let offset = 0;
+    while (true) {
+      let query = admin
+        .from('emails')
+        .select('id, received_at')
+        .eq('user_id', user_id)
+        .eq('is_archived', false)
+        .eq('is_deleted', false);
 
-    // Apply criteria filters
-    query = applyCriteriaFilters(query, resolvedCriteria, criteria_logic);
+      query = applyCriteriaFilters(query, resolvedCriteria, criteria_logic);
+      query = query.range(offset, offset + PAGE_SIZE - 1);
 
-    const { data: matchingEmails, error: queryError } = await query;
-    if (queryError) throw queryError;
+      const { data, error: queryError } = await query;
+      if (queryError) throw queryError;
+      if (!data || data.length === 0) break;
+      matchingEmails.push(...data);
+      if (data.length < PAGE_SIZE) break;
+      offset += PAGE_SIZE;
+    }
 
-    if (!matchingEmails || matchingEmails.length === 0) {
+    if (matchingEmails.length === 0) {
       return jsonResponse({ queued: 0 });
     }
 
@@ -72,9 +82,15 @@ Deno.serve(async (req) => {
     const terminalAction = (action === 'delete' || action === 'keep_newest_delete')
       ? 'delete'
       : 'archive';
-    const scheduledAt = new Date(
-      Date.now() + (isKeepNewest ? 0 : delay_hours) * 3600 * 1000
-    ).toISOString();
+
+    // Build per-email scheduled_at map: received_at + delay_hours
+    const scheduledAtMap = new Map<string, string>();
+    for (const e of matchingEmails) {
+      const scheduledAt = new Date(
+        new Date(e.received_at).getTime() + delay_hours * 3600 * 1000
+      ).toISOString();
+      scheduledAtMap.set(e.id, scheduledAt);
+    }
 
     // Exclude emails already in sweep_queue (pending) for this rule.
     // Also clear out old executed rows for matching emails so they can be re-queued.
@@ -82,47 +98,46 @@ Deno.serve(async (req) => {
     // with the sooner one (sooner rule wins).
     const matchingIds = matchingEmails.map(e => e.id);
 
-    const { data: existingQueue } = await admin
-      .from('sweep_queue')
-      .select('email_id, executed, scheduled_at')
-      .eq('user_id', user_id)
-      .in('email_id', matchingIds);
+    // Fetch existing queue entries in chunks to avoid query-string limits on .in()
+    const existingQueue: { email_id: string; executed: boolean; scheduled_at: string }[] = [];
+    for (let i = 0; i < matchingIds.length; i += 500) {
+      const chunk = matchingIds.slice(i, i + 500);
+      const { data } = await admin
+        .from('sweep_queue')
+        .select('email_id, executed, scheduled_at')
+        .eq('user_id', user_id)
+        .in('email_id', chunk);
+      if (data) existingQueue.push(...data);
+    }
 
-    const pendingIds = new Set<string>();
-    const executedIds: string[] = [];
+    const skipIds = new Set<string>();
     const replaceSoonerIds: string[] = [];
     for (const q of existingQueue || []) {
       if (q.executed) {
-        executedIds.push(q.email_id);
+        // Already swept — don't re-queue
+        skipIds.add(q.email_id);
       } else {
         // If the new scheduled_at is sooner, replace the existing pending item
-        if (new Date(scheduledAt).getTime() < new Date(q.scheduled_at).getTime()) {
+        const newScheduledAt = scheduledAtMap.get(q.email_id)!;
+        if (new Date(newScheduledAt).getTime() < new Date(q.scheduled_at).getTime()) {
           replaceSoonerIds.push(q.email_id);
         } else {
-          pendingIds.add(q.email_id);
+          skipIds.add(q.email_id);
         }
       }
     }
 
-    // Delete executed rows so the upsert can re-insert them
-    if (executedIds.length > 0) {
-      await admin
-        .from('sweep_queue')
-        .delete()
-        .eq('user_id', user_id)
-        .in('email_id', executedIds);
-    }
-
     // Delete pending rows that will be replaced with a sooner scheduled_at
-    if (replaceSoonerIds.length > 0) {
+    for (let i = 0; i < replaceSoonerIds.length; i += 500) {
+      const chunk = replaceSoonerIds.slice(i, i + 500);
       await admin
         .from('sweep_queue')
         .delete()
         .eq('user_id', user_id)
-        .in('email_id', replaceSoonerIds);
+        .in('email_id', chunk);
     }
 
-    let eligible = matchingEmails.filter(e => !pendingIds.has(e.id));
+    let eligible = matchingEmails.filter(e => !skipIds.has(e.id));
 
     // For keep_newest actions, skip the most recent email
     if (isKeepNewest && eligible.length > 1) {
@@ -141,14 +156,14 @@ Deno.serve(async (req) => {
         user_id,
         email_id: e.id,
         sweep_rule_id: rule_id,
-        scheduled_at: scheduledAt,
+        scheduled_at: scheduledAtMap.get(e.id)!,
         action: terminalAction,
         executed: false,
       }));
 
       const { error: insertError } = await admin
         .from('sweep_queue')
-        .upsert(batch, { onConflict: 'user_id,email_id', ignoreDuplicates: true });
+        .upsert(batch, { onConflict: 'user_id,email_id' });
 
       if (insertError) {
         console.error(`Batch insert error at offset ${i}:`, insertError);

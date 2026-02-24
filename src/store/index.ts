@@ -422,6 +422,16 @@ export const useStore = create<StoreState>((set, get) => ({
   exemptSweepEmail: (emailId) => {
     const email = get().sweepEmails.find(e => e.id === emailId);
     if (!email) return;
+    // Delete from server so exempt persists across refresh
+    if (supabase) {
+      supabase
+        .from('sweep_queue')
+        .delete()
+        .eq('email_id', emailId)
+        .then(({ error }) => {
+          if (error) console.error('Failed to exempt sweep email:', error);
+        });
+    }
     set(s => ({
       sweepEmails: s.sweepEmails.filter(e => e.id !== emailId),
       undoAction: { type: 'exempt', email, timestamp: Date.now() },
@@ -560,7 +570,6 @@ export const useStore = create<StoreState>((set, get) => ({
   })),
 
   applySweepAction: (criteria, criteriaLogic, action, delayHours) => {
-    const delaySec = delayHours * 3600;
     const isKeepNewest = action.startsWith('keep_newest_');
     const terminalAction = isKeepNewest ? action.replace('keep_newest_', '') : action;
     set(s => {
@@ -577,15 +586,17 @@ export const useStore = create<StoreState>((set, get) => ({
       const updatedSweep = [...s.sweepEmails];
       const newItems: SweepEmail[] = [];
       for (const e of toSweep) {
+        const emailAgeSec = Math.floor((Date.now() - e.time) / 1000);
+        const remainingSec = Math.max(0, delayHours * 3600 - emailAgeSec);
         const existing = sweepMap.get(e.id);
         if (existing) {
           // Replace only if new rule sweeps sooner
-          if (delaySec < existing.sweepSeconds) {
+          if (remainingSec < existing.sweepSeconds) {
             const idx = updatedSweep.findIndex(s => s.id === e.id);
-            if (idx !== -1) updatedSweep[idx] = { ...existing, sweepSeconds: delaySec, action: terminalAction };
+            if (idx !== -1) updatedSweep[idx] = { ...existing, sweepSeconds: remainingSec, action: terminalAction };
           }
         } else {
-          newItems.push({ id: e.id, accountId: e.accountId, sender: e.sender, subject: e.subject, sweepSeconds: delaySec, exempted: false, action: terminalAction });
+          newItems.push({ id: e.id, accountId: e.accountId, sender: e.sender, subject: e.subject, sweepSeconds: remainingSec, exempted: false, action: terminalAction });
         }
       }
       return {
