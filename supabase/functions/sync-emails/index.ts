@@ -140,13 +140,16 @@ async function gmailFullSync(
   const userId = account.user_id as string;
   const accountId = account.id as string;
 
+  const startTime = Date.now();
+  const TIME_BUDGET_MS = 50_000; // Stop fetching metadata at 50s to leave room for cleanup
+
   // Fetch all inbox message IDs
   let messageIds: string[] = [];
   let pageToken: string | undefined;
 
   do {
     const params = new URLSearchParams({
-      maxResults: '100',
+      maxResults: '500',
       q: 'in:inbox',
     });
     if (pageToken) params.set('pageToken', pageToken);
@@ -198,11 +201,16 @@ async function gmailFullSync(
     return 0;
   }
 
-  // Fetch message metadata in parallel batches
+  // Fetch message metadata in parallel batches with time budget
   let synced = 0;
-  const batchSize = 10;
+  const batchSize = 20;
 
   for (let i = 0; i < remainingIds.length; i += batchSize) {
+    if (Date.now() - startTime > TIME_BUDGET_MS) {
+      console.log(`Time budget reached after syncing ${synced} messages, ${remainingIds.length - i} still remaining`);
+      break;
+    }
+
     const batch = remainingIds.slice(i, i + batchSize);
     const messages = await Promise.all(
       batch.map(async (id) => {
@@ -267,8 +275,8 @@ async function gmailIncrementalSync(
   let synced = 0;
   const uniqueAdded = [...new Set(addedIds)];
 
-  for (let i = 0; i < uniqueAdded.length; i += 10) {
-    const batch = uniqueAdded.slice(i, i + 10);
+  for (let i = 0; i < uniqueAdded.length; i += 20) {
+    const batch = uniqueAdded.slice(i, i + 20);
     const messages = await Promise.all(
       batch.map(async (id) => {
         const res = await gmailFetch(accessToken, `/messages/${id}?format=METADATA&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject`);
