@@ -1,7 +1,7 @@
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase.ts';
 
-const PAGE_SIZE = 100;
+const PAGE_SIZE = 500;
 
 export interface DbEmail {
   id: string;
