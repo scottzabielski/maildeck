@@ -5,6 +5,7 @@ import type {
 } from '../types/index.ts';
 import { fireEmailAction } from '../lib/emailActions.ts';
 import { emailMatchesCriteria } from '../lib/emailFilter.ts';
+import { supabase } from '../lib/supabase.ts';
 
 // ========================================
 // MOCK DATA
@@ -469,10 +470,25 @@ export const useStore = create<StoreState>((set, get) => ({
     emails: [{ starred: false, ...email } as Email, ...s.emails],
   })),
 
-  removeSweepEmail: (emailId) => set(s => ({
-    sweepEmails: s.sweepEmails.filter(e => e.id !== emailId),
-    emails: s.emails.filter(e => e.id !== emailId),
-  })),
+  removeSweepEmail: (emailId) => {
+    const sweep = get().sweepEmails.find(e => e.id === emailId);
+    const action = sweep?.action === 'delete' ? 'delete' : 'archive';
+    fireEmailAction(emailId, action);
+    // Mark the sweep queue row as executed in Supabase so it doesn't reappear
+    if (supabase) {
+      supabase
+        .from('sweep_queue')
+        .update({ executed: true })
+        .eq('email_id', emailId)
+        .then(({ error }) => {
+          if (error) console.error('Failed to mark sweep item executed:', error);
+        });
+    }
+    set(s => ({
+      sweepEmails: s.sweepEmails.filter(e => e.id !== emailId),
+      emails: s.emails.filter(e => e.id !== emailId),
+    }));
+  },
 
   tickSweepCountdowns: () => set(s => {
     const updated = s.sweepEmails.map(e => {
