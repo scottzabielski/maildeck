@@ -4,7 +4,7 @@ import { EmailCard } from './EmailCard.tsx';
 import { Icons } from './ui/Icons.tsx';
 import { useStore } from '../store/index.ts';
 import { emailMatchesCriteria } from '../lib/emailFilter.ts';
-import { scrollPositions } from '../lib/scrollPositions.ts';
+import { scrollPositions, filterModes } from '../lib/scrollPositions.ts';
 
 type FilterMode = 'none' | 'no-stream' | 'no-sweep' | 'neither';
 
@@ -16,7 +16,17 @@ export function InboxColumn({ accountId }: InboxColumnProps) {
   const { emails, accounts, disabledAccountIds, selectedEmail, sweepEmails, columns, sweepRules, _fetchNextPage, _hasNextPage, _isFetchingNextPage } = useStore();
   const selectedEmailId = selectedEmail ? selectedEmail.emailId : null;
 
-  const [filterMode, setFilterMode] = useState<FilterMode>('none');
+  const filterKey = accountId || 'all-inboxes';
+  const [filterMode, setFilterModeRaw] = useState<FilterMode>(
+    () => (filterModes.get(filterKey) as FilterMode) || 'none'
+  );
+  const setFilterMode = useCallback((update: FilterMode | ((prev: FilterMode) => FilterMode)) => {
+    setFilterModeRaw(prev => {
+      const next = typeof update === 'function' ? update(prev) : update;
+      filterModes.set(filterKey, next);
+      return next;
+    });
+  }, [filterKey]);
   const [filterMenuOpen, setFilterMenuOpen] = useState(false);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const filterBtnRef = useRef<HTMLButtonElement>(null);
