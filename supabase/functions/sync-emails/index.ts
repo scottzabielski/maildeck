@@ -112,13 +112,27 @@ async function syncAccount(
         : await outlookIncrementalSync(supabase, account, accessToken);
     }
 
-    // Mark as idle
+    // If no sync_history_id yet, the full sync isn't complete — keep status as 'syncing'
+    // so the frontend auto-retries. Otherwise mark as 'idle'.
+    const { data: acctAfter } = await supabase
+      .from('email_accounts')
+      .select('sync_history_id, sync_delta_link')
+      .eq('id', accountId)
+      .single();
+
+    const syncComplete = account.provider === 'gmail'
+      ? !!acctAfter?.sync_history_id
+      : !!acctAfter?.sync_delta_link;
+
     await supabase
       .from('email_accounts')
-      .update({ sync_status: 'idle', last_synced_at: new Date().toISOString() })
+      .update({
+        sync_status: syncComplete ? 'idle' : 'syncing',
+        last_synced_at: new Date().toISOString(),
+      })
       .eq('id', accountId);
 
-    return { account_id: accountId, status: 'ok', messages_synced: messageCount };
+    return { account_id: accountId, status: syncComplete ? 'ok' : 'partial', messages_synced: messageCount };
   } catch (err) {
     await supabase
       .from('email_accounts')

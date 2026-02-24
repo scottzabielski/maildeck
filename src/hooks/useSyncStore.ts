@@ -174,7 +174,7 @@ export function useSyncStore() {
   useEffect(() => {
     if (useMockData || !dbAccounts) return;
     const needsSync = dbAccounts.filter(
-      acct => (acct.sync_status === 'never_synced' || acct.sync_status === 'error')
+      acct => (acct.sync_status === 'never_synced' || acct.sync_status === 'error' || acct.sync_status === 'syncing')
         && !syncedAccountsRef.current.has(acct.id)
     );
     if (needsSync.length === 0) return;
