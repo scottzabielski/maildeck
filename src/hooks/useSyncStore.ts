@@ -195,8 +195,9 @@ export function useSyncStore() {
     useStore.setState({ sweepEmails: merged });
   }, [dbSweepQueue]);
 
-  // One-time hydration: apply all enabled sweep rules server-side on startup.
-  // This catches emails that arrived while the app was closed or before a rule existed.
+  // One-time hydration: apply all enabled sweep rules on startup.
+  // Runs client-side for immediate visual feedback on loaded emails,
+  // and server-side to catch emails not yet loaded via pagination.
   useEffect(() => {
     if (useMockData || !userId || sweepHydrationDoneRef.current) return;
     if (!dbSweepRules || dbSweepRules.length === 0 || !emailsFetched) return;
@@ -204,15 +205,23 @@ export function useSyncStore() {
     sweepHydrationDoneRef.current = true;
 
     const enabledRules = dbSweepRules.filter(r => r.is_enabled);
+    const { applySweepAction } = useStore.getState();
+
     for (const rule of enabledRules) {
       const criteria = rule.criteria || (rule.sender_pattern ? [{ field: 'from', op: 'contains', value: rule.sender_pattern }] : []);
       if (criteria.length === 0) continue;
 
+      const criteriaLogic = rule.criteria_logic || 'and';
+
+      // Immediate client-side: tag loaded emails that match
+      applySweepAction(criteria, criteriaLogic, rule.action, rule.delay_hours);
+
+      // Server-side: queue ALL matching emails (including unloaded ones)
       applySweepRuleMutation.mutate({
         ruleId: rule.id,
         userId,
         criteria,
-        criteriaLogic: rule.criteria_logic || 'and',
+        criteriaLogic,
         action: rule.action,
         delayHours: rule.delay_hours,
       });

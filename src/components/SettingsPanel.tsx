@@ -246,7 +246,7 @@ function formatCriteriaSummary(rule: SweepRule): string {
 }
 
 function SettingsSweepRules({ sweepRules, toggleSweepRule }: { sweepRules: SweepRule[]; toggleSweepRule: (id: string) => void }) {
-  const { sweepDelayHours, setSweepDelayHours, openSweepRuleEditorForRule } = useStore();
+  const { sweepDelayHours, setSweepDelayHours, openSweepRuleEditorForRule, openNewSweepRuleEditor } = useStore();
   const { user } = useAuth();
   const deleteMutation = useDeleteSweepRule();
   const [search, setSearch] = useState('');
@@ -295,6 +295,9 @@ function SettingsSweepRules({ sweepRules, toggleSweepRule }: { sweepRules: Sweep
         onChange={e => setSearch(e.target.value)}
         style={{ width: '100%', marginBottom: 8 }}
       />
+      <button className="settings-add-btn" onClick={openNewSweepRuleEditor} style={{ marginBottom: 8 }}>
+        <Icons.Plus /> Add Rule
+      </button>
       <div className="settings-card">
         {filteredRules.map(rule => (
           <div key={rule.id} className="sweep-rule">
@@ -342,9 +345,6 @@ function SettingsSweepRules({ sweepRules, toggleSweepRule }: { sweepRules: Sweep
             </div>
           </div>
         ))}
-        <button className="settings-add-btn">
-          <Icons.Plus /> Add Rule
-        </button>
       </div>
     </>
   );

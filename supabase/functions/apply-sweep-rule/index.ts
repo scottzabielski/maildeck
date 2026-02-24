@@ -67,16 +67,37 @@ Deno.serve(async (req) => {
       return jsonResponse({ queued: 0 });
     }
 
-    // Exclude emails already in sweep_queue (not executed) for this rule
+    // Exclude emails already in sweep_queue (pending) for this rule.
+    // Also clear out old executed rows for matching emails so they can be re-queued
+    // (e.g., if the provider action failed or the email reappeared in the inbox).
+    const matchingIds = matchingEmails.map(e => e.id);
+
     const { data: existingQueue } = await admin
       .from('sweep_queue')
-      .select('email_id')
+      .select('email_id, executed')
       .eq('user_id', user_id)
-      .eq('sweep_rule_id', rule_id)
-      .eq('executed', false);
+      .in('email_id', matchingIds);
 
-    const alreadyQueued = new Set((existingQueue || []).map(q => q.email_id));
-    let eligible = matchingEmails.filter(e => !alreadyQueued.has(e.id));
+    const pendingIds = new Set<string>();
+    const executedIds: string[] = [];
+    for (const q of existingQueue || []) {
+      if (q.executed) {
+        executedIds.push(q.email_id);
+      } else {
+        pendingIds.add(q.email_id);
+      }
+    }
+
+    // Delete executed rows so the upsert can re-insert them
+    if (executedIds.length > 0) {
+      await admin
+        .from('sweep_queue')
+        .delete()
+        .eq('user_id', user_id)
+        .in('email_id', executedIds);
+    }
+
+    let eligible = matchingEmails.filter(e => !pendingIds.has(e.id));
 
     // For keep_newest actions, skip the most recent email
     const isKeepNewest = action.startsWith('keep_newest_');

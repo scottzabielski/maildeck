@@ -138,6 +138,7 @@ export interface SweepRuleEditorState {
   toEmail: string;
   columnId: string | null;
   ruleId?: string;
+  blank?: boolean;
 }
 
 export interface StreamEditorPrefill {
@@ -217,6 +218,7 @@ export interface StoreState {
   toggleSweepRule: (ruleId: string) => void;
   setSweepDelayHours: (hours: number) => void;
   openSweepRuleEditor: (emailId: string) => void;
+  openNewSweepRuleEditor: () => void;
   openSweepRuleEditorForRule: (ruleId: string) => void;
   openSweepRuleEditorForStream: (columnId: string) => void;
   closeSweepRuleEditor: () => void;
@@ -482,6 +484,17 @@ export const useStore = create<StoreState>((set, get) => ({
       subject: email.subject,
       toEmail: email.toEmail || '',
       columnId: email.columnId || null,
+    } });
+  },
+  openNewSweepRuleEditor: () => {
+    set({ sweepRuleEditor: {
+      emailId: '',
+      sender: '',
+      senderEmail: '',
+      subject: '',
+      toEmail: '',
+      columnId: null,
+      blank: true,
     } });
   },
   openSweepRuleEditorForRule: (ruleId) => {

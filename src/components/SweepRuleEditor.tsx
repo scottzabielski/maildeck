@@ -44,6 +44,13 @@ export function SweepRuleEditor() {
           }
           setDelayHours(rule.delayHours);
         }
+      } else if (sweepRuleEditor.blank) {
+        // Create mode: blank new rule
+        setCriteria([{ field: 'from', op: 'contains', value: '' }]);
+        setCriteriaLogic('and');
+        setMode('always');
+        setSubAction('archive');
+        setDelayHours(sweepDelayHours);
       } else if (sweepRuleEditor.columnId && !sweepRuleEditor.emailId) {
         // Create mode: pre-fill from stream column
         setCriteria([{ field: 'stream', op: 'equals', value: sweepRuleEditor.columnId }]);
@@ -167,6 +174,8 @@ export function SweepRuleEditor() {
         }
       }
 
+      // Immediate client-side feedback for loaded emails
+      applySweepAction(validCriteria, criteriaLogic, selectedAction, effectiveDelay);
       closeSweepRuleEditor();
       return;
     }

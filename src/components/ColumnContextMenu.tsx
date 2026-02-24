@@ -59,10 +59,10 @@ export function ColumnContextMenu() {
     closeColumnContextMenu();
   };
 
-  const item = (Icon: React.FC, label: string, onClick: () => void, danger?: boolean) => (
+  const item = (Icon: React.FC, label: string, onClick: () => void, danger?: boolean, keepOpen?: boolean) => (
     <div
       className={`context-menu-item${danger ? ' danger' : ''}`}
-      onClick={() => { onClick(); closeColumnContextMenu(); }}
+      onClick={() => { onClick(); if (!keepOpen) closeColumnContextMenu(); }}
     >
       <Icon />
       <span>{label}</span>
@@ -91,7 +91,7 @@ export function ColumnContextMenu() {
         </div>
       ) : (
         <>
-          {item(Icons.Edit, 'Rename', handleRenameStart)}
+          {item(Icons.Edit, 'Rename', handleRenameStart, false, true)}
           {item(Icons.Filter, 'Edit Criteria\u2026', () => openCriteriaEditor(column.id))}
           {item(Icons.Sweep, 'Create Sweep Rule\u2026', () => openSweepRuleEditorForStream(column.id))}
           <div className="context-menu-separator" />
