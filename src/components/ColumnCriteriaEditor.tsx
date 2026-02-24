@@ -21,7 +21,13 @@ export function ColumnCriteriaEditor() {
 
   useEffect(() => {
     if (column) {
-      setCriteria(column.criteria || []);
+      const baseCriteria = column.criteria || [];
+      if (streamEditorPrefill) {
+        const prefillValue = streamEditorPrefill.senderEmail || streamEditorPrefill.sender;
+        setCriteria([...baseCriteria, { field: 'from', op: 'contains', value: prefillValue }]);
+      } else {
+        setCriteria(baseCriteria);
+      }
       setLogic(column.criteriaLogic || 'and');
       setName(column.name);
       setAccent(column.accent);
@@ -43,11 +49,27 @@ export function ColumnCriteriaEditor() {
 
   const addRow = () => setCriteria([...criteria, { field: 'from', op: 'contains', value: '' }]);
   const removeRow = (i: number) => setCriteria(criteria.filter((_, idx) => idx !== i));
+  const getPrefillValueForField = (field: string): string | null => {
+    if (!streamEditorPrefill) return null;
+    switch (field) {
+      case 'from': return streamEditorPrefill.senderEmail || streamEditorPrefill.sender;
+      case 'to': return streamEditorPrefill.toEmail;
+      case 'subject': return streamEditorPrefill.subject;
+      default: return null;
+    }
+  };
+
   const updateRow = (i: number, key: keyof Criterion, val: string) =>
     setCriteria(criteria.map((r, idx) => {
       if (idx !== i) return r;
       if (key === 'field' && val === 'stream') {
         return { ...r, field: val, op: 'equals', value: '' };
+      }
+      if (key === 'field') {
+        const prefillValue = getPrefillValueForField(val);
+        if (prefillValue) {
+          return { ...r, field: val, value: prefillValue };
+        }
       }
       return { ...r, [key]: val };
     }));

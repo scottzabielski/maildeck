@@ -144,6 +144,7 @@ export interface StreamEditorPrefill {
   senderEmail: string;
   sender: string;
   subject: string;
+  toEmail: string;
 }
 
 export interface StoreState {
@@ -202,6 +203,7 @@ export interface StoreState {
   closeSweepRuleEditor: () => void;
   updateSweepRule: (ruleId: string, updates: Partial<Omit<SweepRule, 'id'>>) => void;
   openStreamEditorFromEmail: (emailId: string) => void;
+  openCriteriaEditorWithPrefill: (columnId: string, emailId: string) => void;
   addSweepRule: (rule: Omit<SweepRule, 'id' | 'enabled'>) => void;
   applySweepAction: (criteria: Criterion[], criteriaLogic: 'and' | 'or', action: string, delayHours: number) => void;
   addNewEmail: (email: Partial<Email> & Pick<Email, 'id' | 'columnId' | 'accountId' | 'sender' | 'subject' | 'snippet' | 'time' | 'unread'>) => void;
@@ -430,13 +432,12 @@ export const useStore = create<StoreState>((set, get) => ({
   openSweepRuleEditor: (emailId) => {
     const email = get().emails.find(e => e.id === emailId);
     if (!email) return;
-    const account = get().accounts.find(a => a.id === email.accountId);
     set({ sweepRuleEditor: {
       emailId,
       sender: email.sender,
       senderEmail: email.senderEmail || '',
       subject: email.subject,
-      toEmail: account?.email || '',
+      toEmail: email.toEmail || '',
       columnId: email.columnId || null,
     } });
   },
@@ -466,9 +467,25 @@ export const useStore = create<StoreState>((set, get) => ({
         senderEmail: email.senderEmail || '',
         sender: email.sender,
         subject: email.subject,
+        toEmail: email.toEmail || '',
       },
       creatingColumn: true,
       editingColumnId: null,
+    });
+  },
+
+  openCriteriaEditorWithPrefill: (columnId, emailId) => {
+    const email = get().emails.find(e => e.id === emailId);
+    if (!email) return;
+    set({
+      streamEditorPrefill: {
+        senderEmail: email.senderEmail || '',
+        sender: email.sender,
+        subject: email.subject,
+        toEmail: email.toEmail || '',
+      },
+      editingColumnId: columnId,
+      creatingColumn: false,
     });
   },
 

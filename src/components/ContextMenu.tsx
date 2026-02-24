@@ -3,7 +3,7 @@ import { Icons } from './ui/Icons.tsx';
 import { useStore } from '../store/index.ts';
 
 export function ContextMenu() {
-  const { contextMenu, closeContextMenu, emails, toggleRead, toggleStar, archiveEmail, deleteEmail, moveToSweep, openSweepRuleEditor, openStreamEditorFromEmail } = useStore();
+  const { contextMenu, closeContextMenu, emails, columns, toggleRead, toggleStar, archiveEmail, deleteEmail, moveToSweep, openSweepRuleEditor, openStreamEditorFromEmail, openCriteriaEditorWithPrefill } = useStore();
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -61,6 +61,30 @@ export function ContextMenu() {
       {item(Icons.Plus, 'Create Stream\u2026', () => {
         openStreamEditorFromEmail(contextMenu.emailId);
       })}
+      {columns.filter(c => c.enabled).length > 0 && (
+        <div className="context-menu-submenu-wrapper">
+          <div className="context-menu-item">
+            <Icons.Filter />
+            <span>Add to Stream</span>
+            <Icons.ChevronRight />
+          </div>
+          <div className="context-menu-submenu">
+            {columns.filter(c => c.enabled).map(col => (
+              <div
+                key={col.id}
+                className="context-menu-item"
+                onClick={() => {
+                  openCriteriaEditorWithPrefill(col.id, contextMenu.emailId);
+                  closeContextMenu();
+                }}
+              >
+                <span className="context-menu-stream-dot" style={{ background: col.accent }} />
+                <span>{col.name}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
