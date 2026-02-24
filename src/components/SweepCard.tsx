@@ -36,7 +36,7 @@ export function SweepCard({ email }: SweepCardProps) {
       <div className="sweep-bottom">
         <div className={`sweep-countdown ${cdClass}`}>
           <Icons.Clock />
-          {formatCountdown(email.sweepSeconds)}
+          {email.action === 'delete' ? 'Delete' : 'Archive'} in {formatCountdown(email.sweepSeconds)}
         </div>
         <button
           className="exempt-btn"

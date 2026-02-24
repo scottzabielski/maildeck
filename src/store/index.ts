@@ -138,6 +138,12 @@ export interface SweepRuleEditorState {
   columnId: string | null;
 }
 
+export interface StreamEditorPrefill {
+  senderEmail: string;
+  sender: string;
+  subject: string;
+}
+
 export interface StoreState {
   theme: string;
   accounts: Account[];
@@ -156,6 +162,7 @@ export interface StoreState {
   contextMenu: ContextMenuState | null;
   sweepDelayHours: number;
   sweepRuleEditor: SweepRuleEditorState | null;
+  streamEditorPrefill: StreamEditorPrefill | null;
   selectedEmail: SelectedEmailState | null;
 
   setActiveView: (viewId: string) => void;
@@ -190,6 +197,7 @@ export interface StoreState {
   setSweepDelayHours: (hours: number) => void;
   openSweepRuleEditor: (emailId: string) => void;
   closeSweepRuleEditor: () => void;
+  openStreamEditorFromEmail: (emailId: string) => void;
   addSweepRule: (rule: Omit<SweepRule, 'id' | 'enabled'>) => void;
   applySweepAction: (criteria: Criterion[], criteriaLogic: 'and' | 'or', action: string, delayHours: number) => void;
   addNewEmail: (email: Partial<Email> & Pick<Email, 'id' | 'columnId' | 'accountId' | 'sender' | 'subject' | 'snippet' | 'time' | 'unread'>) => void;
@@ -208,18 +216,20 @@ export interface StoreState {
 // ========================================
 // ZUSTAND STORE
 // ========================================
+const useMockData = typeof import.meta !== 'undefined' && import.meta.env?.VITE_USE_MOCK_DATA === 'true';
+
 function getInitialTheme(): string {
   try { return localStorage.getItem('maildeck-theme') || 'dark'; } catch { return 'dark'; }
 }
 
 export const useStore = create<StoreState>((set, get) => ({
   theme: getInitialTheme(),
-  accounts: ACCOUNTS,
-  emails: EMAILS,
-  columns: COLUMNS,
-  sweepEmails: SWEEP_EMAILS_INIT,
+  accounts: useMockData ? ACCOUNTS : [],
+  emails: useMockData ? EMAILS : [],
+  columns: useMockData ? COLUMNS : [],
+  sweepEmails: useMockData ? SWEEP_EMAILS_INIT : [],
   views: VIEWS,
-  sweepRules: SWEEP_RULES,
+  sweepRules: useMockData ? SWEEP_RULES : [],
   activeViewId: 'streams',
   disabledAccountIds: new Set<string>(),
   isSettingsOpen: false,
@@ -230,6 +240,7 @@ export const useStore = create<StoreState>((set, get) => ({
   contextMenu: null,
   sweepDelayHours: 24,
   sweepRuleEditor: null,
+  streamEditorPrefill: null,
   selectedEmail: null,
 
   setActiveView: (viewId) => set({ activeViewId: viewId, selectedEmail: null }),
@@ -262,7 +273,7 @@ export const useStore = create<StoreState>((set, get) => ({
   setSettingsSection: (section) => set({ settingsSection: section }),
   openCriteriaEditor: (columnId) => set({ editingColumnId: columnId, creatingColumn: false }),
   openNewColumnEditor: () => set({ editingColumnId: null, creatingColumn: true }),
-  closeCriteriaEditor: () => set({ editingColumnId: null, creatingColumn: false }),
+  closeCriteriaEditor: () => set({ editingColumnId: null, creatingColumn: false, streamEditorPrefill: null }),
   addColumn: (column) => {
     const id = `col-${Date.now()}`;
     const newCol = { ...column, id };
@@ -420,6 +431,20 @@ export const useStore = create<StoreState>((set, get) => ({
     } });
   },
   closeSweepRuleEditor: () => set({ sweepRuleEditor: null }),
+
+  openStreamEditorFromEmail: (emailId) => {
+    const email = get().emails.find(e => e.id === emailId);
+    if (!email) return;
+    set({
+      streamEditorPrefill: {
+        senderEmail: email.senderEmail || '',
+        sender: email.sender,
+        subject: email.subject,
+      },
+      creatingColumn: true,
+      editingColumnId: null,
+    });
+  },
 
   addSweepRule: (rule) => set(s => ({
     sweepRules: [...s.sweepRules, { ...rule, id: `sr-${Date.now()}`, enabled: true }],

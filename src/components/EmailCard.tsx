@@ -12,9 +12,10 @@ interface EmailCardProps {
   sourceAccountId?: string;
   selectedEmailId: string | null;
   sweepSeconds?: number;
+  sweepAction?: string;
 }
 
-export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, selectedEmailId, sweepSeconds }: EmailCardProps) {
+export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, selectedEmailId, sweepSeconds, sweepAction }: EmailCardProps) {
   const openContextMenu = useStore(s => s.openContextMenu);
   const selectEmail = useStore(s => s.selectEmail);
   const account = accounts.find(a => a.id === email.accountId);
@@ -55,7 +56,7 @@ export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, 
         <div className="email-card-sweep-row">
           <span className={`email-sweep-badge ${getCountdownClass(sweepSeconds)}`}>
             <Icons.Clock />
-            {formatCountdown(sweepSeconds)}
+            {sweepAction === 'delete' ? 'Delete' : 'Archive'} in {formatCountdown(sweepSeconds)}
           </span>
         </div>
       )}

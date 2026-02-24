@@ -9,7 +9,7 @@ const ACCENT_COLORS = [
 ];
 
 export function ColumnCriteriaEditor() {
-  const { editingColumnId, creatingColumn, columns, closeCriteriaEditor, updateColumn, addColumn } = useStore();
+  const { editingColumnId, creatingColumn, columns, closeCriteriaEditor, updateColumn, addColumn, streamEditorPrefill } = useStore();
   const column = editingColumnId ? columns.find(c => c.id === editingColumnId) : null;
   const isCreating = creatingColumn && !editingColumnId;
 
@@ -26,13 +26,18 @@ export function ColumnCriteriaEditor() {
       setName(column.name);
       setAccent(column.accent);
     } else if (isCreating) {
-      setCriteria([{ field: 'from', op: 'contains', value: '' }]);
+      if (streamEditorPrefill) {
+        const prefillValue = streamEditorPrefill.senderEmail || streamEditorPrefill.sender;
+        setCriteria([{ field: 'from', op: 'contains', value: prefillValue }]);
+      } else {
+        setCriteria([{ field: 'from', op: 'contains', value: '' }]);
+      }
       setLogic('and');
       setName('');
       setAccent(ACCENT_COLORS[Math.floor(Math.random() * ACCENT_COLORS.length)]);
       setTimeout(() => nameInputRef.current?.focus(), 50);
     }
-  }, [editingColumnId, column, isCreating]);
+  }, [editingColumnId, column, isCreating, streamEditorPrefill]);
 
   if (!column && !isCreating) return null;
 

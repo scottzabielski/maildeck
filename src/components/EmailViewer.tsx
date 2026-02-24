@@ -61,6 +61,7 @@ export function EmailViewer() {
 </style>
 </head>
 <body>${body.body_html}</body>
+<script>document.querySelectorAll('a[href]').forEach(a => { a.target = '_blank'; a.rel = 'noopener noreferrer'; });</script>
 </html>`;
 
     iframe.srcdoc = doc;
@@ -213,7 +214,7 @@ export function EmailViewer() {
           <iframe
             ref={iframeRef}
             className="email-viewer-iframe"
-            sandbox="allow-same-origin"
+            sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-scripts"
             style={{ height: iframeHeight }}
             title="Email content"
           />

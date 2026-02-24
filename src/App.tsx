@@ -73,7 +73,7 @@ function AppShell() {
   const selectedEmail = useStore(s => s.selectedEmail);
 
   // Sync Supabase data → Zustand store
-  const { persistTheme, persistSweepDelay, persistColumnReorder, persistColumnCreate, persistColumnUpdate, persistColumnDelete, persistAccountReorder, persistAccountRename } = useSyncStore();
+  const { hydrated, persistTheme, persistSweepDelay, persistColumnReorder, persistColumnCreate, persistColumnUpdate, persistColumnDelete, persistAccountReorder, persistAccountRename } = useSyncStore();
 
   // Handle OAuth provider redirect (e.g. /settings/accounts?connected=gmail)
   useEffect(() => {
@@ -152,6 +152,22 @@ function AppShell() {
 
     return () => clearInterval(interval);
   }, [addNewEmail]);
+
+  if (!hydrated) {
+    return (
+      <div style={{
+        height: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'var(--bg-base)',
+        color: 'var(--text-secondary)',
+        fontSize: '14px',
+      }}>
+        Loading...
+      </div>
+    );
+  }
 
   return (
     <>

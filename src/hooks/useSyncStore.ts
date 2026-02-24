@@ -23,11 +23,13 @@ export function useSyncStore() {
   const userId = user?.id;
 
   const { data: profile } = useProfile(useMockData ? undefined : userId);
-  const { data: dbColumns } = useColumns(useMockData ? undefined : userId);
+  const { data: dbColumns, isFetched: columnsFetched } = useColumns(useMockData ? undefined : userId);
   const { data: dbSweepRules } = useSweepRules(useMockData ? undefined : userId);
-  const { data: dbAccounts } = useEmailAccounts(useMockData ? undefined : userId);
-  const { data: dbEmails } = useEmails(useMockData ? undefined : userId);
+  const { data: dbAccounts, isFetched: accountsFetched } = useEmailAccounts(useMockData ? undefined : userId);
+  const { data: dbEmails, isFetched: emailsFetched } = useEmails(useMockData ? undefined : userId);
   const { data: dbSweepQueue } = useSweepQueue(useMockData ? undefined : userId);
+
+  const hydrated = useMockData || (accountsFetched && emailsFetched && columnsFetched);
 
   const updateProfileMutation = useUpdateProfile();
   const reorderColumnsMutation = useReorderColumns();
@@ -179,6 +181,7 @@ export function useSyncStore() {
   return {
     userId,
     useMockData,
+    hydrated,
     persistTheme: (theme: string) => {
       if (useMockData || !userId) return;
       updateProfileMutation.mutate({ id: userId, theme });

@@ -3,7 +3,7 @@ import { Icons } from './ui/Icons.tsx';
 import { useStore } from '../store/index.ts';
 
 export function ContextMenu() {
-  const { contextMenu, closeContextMenu, emails, toggleRead, toggleStar, archiveEmail, deleteEmail, moveToSweep, openSweepRuleEditor } = useStore();
+  const { contextMenu, closeContextMenu, emails, toggleRead, toggleStar, archiveEmail, deleteEmail, moveToSweep, openSweepRuleEditor, openStreamEditorFromEmail } = useStore();
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -57,6 +57,9 @@ export function ContextMenu() {
       <div className="context-menu-separator" />
       {item(Icons.Sweep, 'Create Sweep Rule\u2026', () => {
         openSweepRuleEditor(contextMenu.emailId);
+      })}
+      {item(Icons.Plus, 'Create Stream\u2026', () => {
+        openStreamEditorFromEmail(contextMenu.emailId);
       })}
     </div>
   );

@@ -25,9 +25,9 @@ export function Column({ column }: ColumnProps) {
   );
   // Build a lookup from email ID → sweep countdown seconds
   const sweepLookup = useMemo(() => {
-    const map = new Map<string, number>();
+    const map = new Map<string, { seconds: number; action: string }>();
     for (const s of sweepEmails) {
-      map.set(s.id, s.sweepSeconds);
+      map.set(s.id, { seconds: s.sweepSeconds, action: s.action || 'archive' });
     }
     return map;
   }, [sweepEmails]);
@@ -63,7 +63,8 @@ export function Column({ column }: ColumnProps) {
               accounts={accounts}
               columnId={column.id}
               selectedEmailId={selectedEmailId}
-              sweepSeconds={sweepLookup.get(email.id)}
+              sweepSeconds={sweepLookup.get(email.id)?.seconds}
+              sweepAction={sweepLookup.get(email.id)?.action}
             />
           ))}
         </AnimatePresence>
