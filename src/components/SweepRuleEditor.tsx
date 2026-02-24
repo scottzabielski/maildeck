@@ -28,7 +28,8 @@ export function SweepRuleEditor() {
       setSelectedAction('archive');
       setDelayHours(sweepDelayHours);
     }
-  }, [sweepRuleEditor, sweepDelayHours]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sweepRuleEditor]);
 
   if (!sweepRuleEditor) return null;
 
@@ -152,7 +153,7 @@ export function SweepRuleEditor() {
   return (
     <div
       className="modal-overlay"
-      onClick={(e) => { if (e.target === e.currentTarget) closeSweepRuleEditor(); }}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) closeSweepRuleEditor(); }}
     >
       <div className="criteria-editor">
         {/* Header */}

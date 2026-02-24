@@ -61,7 +61,7 @@ export function ColumnCriteriaEditor() {
   const canApply = isCreating ? name.trim().length > 0 : true;
 
   return (
-    <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) closeCriteriaEditor(); }}>
+    <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) closeCriteriaEditor(); }}>
       <div className="criteria-editor">
         <div className="criteria-header">
           <span className="criteria-title">
