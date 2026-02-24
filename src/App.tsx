@@ -6,6 +6,7 @@ import { useSyncStore } from './hooks/useSyncStore.ts';
 import { TopBar } from './components/TopBar.tsx';
 import { DeckLayout } from './components/DeckLayout.tsx';
 import { ContextMenu } from './components/ContextMenu.tsx';
+import { ColumnContextMenu } from './components/ColumnContextMenu.tsx';
 import { SweepRuleEditor } from './components/SweepRuleEditor.tsx';
 import { UndoToast } from './components/UndoToast.tsx';
 import { ColumnCriteriaEditor } from './components/ColumnCriteriaEditor.tsx';
@@ -103,7 +104,7 @@ function AppShell() {
   // Escape key to close email viewer (only if no context menu is open)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && selectedEmail && !useStore.getState().contextMenu) deselectEmail();
+      if (e.key === 'Escape' && selectedEmail && !useStore.getState().contextMenu && !useStore.getState().columnContextMenu) deselectEmail();
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
@@ -174,6 +175,7 @@ function AppShell() {
       <TopBar />
       <DeckLayout />
       <ContextMenu />
+      <ColumnContextMenu />
       <SweepRuleEditor />
       <UndoToast />
       <ColumnCriteriaEditor />

@@ -333,7 +333,11 @@ function SettingsSweepRules({ sweepRules, toggleSweepRule }: { sweepRules: Sweep
             <div className="sweep-rule-detail">{rule.detail}</div>
             <div className="sweep-rule-meta">
               <span className="sweep-rule-tag">{rule.enabled ? 'active' : 'paused'}</span>
-              <span className="sweep-rule-tag">{rule.action}</span>
+              <span className="sweep-rule-tag">{
+                rule.action === 'keep_newest_archive' ? 'keep newest (archive)' :
+                rule.action === 'keep_newest_delete' ? 'keep newest (delete)' :
+                rule.action
+              }</span>
               <span className="sweep-rule-tag">all accounts</span>
             </div>
           </div>

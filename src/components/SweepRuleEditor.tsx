@@ -2,9 +2,7 @@ import { useState, useEffect } from 'react';
 import { Icons } from './ui/Icons.tsx';
 import { useStore } from '../store/index.ts';
 import { useAuth } from '../hooks/useAuth.ts';
-import { useCreateSweepRule, useUpdateSweepRule } from '../hooks/useSweepRules.ts';
-import { useAddToSweepQueue } from '../hooks/useSweepQueue.ts';
-import { emailMatchesCriteria } from '../lib/emailFilter.ts';
+import { useCreateSweepRule, useUpdateSweepRule, useApplySweepRule } from '../hooks/useSweepRules.ts';
 import type { Criterion } from '../types/index.ts';
 
 const useMockData = import.meta.env.VITE_USE_MOCK_DATA === 'true';
@@ -14,15 +12,19 @@ export function SweepRuleEditor() {
   const { user } = useAuth();
   const createSweepRuleMutation = useCreateSweepRule();
   const updateSweepRuleMutation = useUpdateSweepRule();
-  const addToSweepQueueMutation = useAddToSweepQueue();
+  const applySweepRuleMutation = useApplySweepRule();
 
   const isEditMode = !!sweepRuleEditor?.ruleId;
 
   const [criteria, setCriteria] = useState<Criterion[]>([]);
   const [criteriaLogic, setCriteriaLogic] = useState<'and' | 'or'>('and');
-  const [selectedAction, setSelectedAction] = useState('archive');
+  const [mode, setMode] = useState<'always' | 'keep_newest'>('always');
+  const [subAction, setSubAction] = useState<'archive' | 'delete'>('archive');
   const [delayHours, setDelayHours] = useState(sweepDelayHours);
   const [error, setError] = useState<string | null>(null);
+
+  // Compute the compound action from mode + subAction
+  const selectedAction = mode === 'keep_newest' ? `keep_newest_${subAction}` : subAction;
 
   useEffect(() => {
     if (sweepRuleEditor) {
@@ -32,15 +34,30 @@ export function SweepRuleEditor() {
         if (rule) {
           setCriteria(rule.criteria.map(c => ({ ...c })));
           setCriteriaLogic(rule.criteriaLogic);
-          setSelectedAction(rule.action);
+          // Parse compound action
+          if (rule.action.startsWith('keep_newest_')) {
+            setMode('keep_newest');
+            setSubAction(rule.action.replace('keep_newest_', '') as 'archive' | 'delete');
+          } else {
+            setMode('always');
+            setSubAction(rule.action as 'archive' | 'delete');
+          }
           setDelayHours(rule.delayHours);
         }
+      } else if (sweepRuleEditor.columnId && !sweepRuleEditor.emailId) {
+        // Create mode: pre-fill from stream column
+        setCriteria([{ field: 'stream', op: 'equals', value: sweepRuleEditor.columnId }]);
+        setCriteriaLogic('and');
+        setMode('always');
+        setSubAction('archive');
+        setDelayHours(sweepDelayHours);
       } else {
         // Create mode: pre-fill from email
         const initialValue = sweepRuleEditor.senderEmail || sweepRuleEditor.sender;
         setCriteria([{ field: 'from', op: 'contains', value: initialValue }]);
         setCriteriaLogic('and');
-        setSelectedAction('archive');
+        setMode('always');
+        setSubAction('archive');
         setDelayHours(sweepDelayHours);
       }
     }
@@ -49,7 +66,7 @@ export function SweepRuleEditor() {
 
   if (!sweepRuleEditor) return null;
 
-  const isDanger = selectedAction === 'delete';
+  const isDanger = subAction === 'delete';
 
   // Pre-fill values by field based on the source email
   const prefillForField = (field: string): string => {
@@ -105,19 +122,22 @@ export function SweepRuleEditor() {
     setError(null);
 
     const ruleName = buildRuleName();
-    const detail = selectedAction === 'delete'
-      ? `Auto-delete after ${delayHours}h`
-      : `Auto-archive after ${delayHours}h`;
+    const effectiveDelay = mode === 'keep_newest' ? 0 : delayHours;
+    const detail = mode === 'keep_newest'
+      ? `Keep newest, ${subAction} rest immediately`
+      : subAction === 'delete'
+        ? `Auto-delete after ${effectiveDelay}h`
+        : `Auto-archive after ${effectiveDelay}h`;
 
     if (isEditMode) {
       // Edit mode: update existing rule
       const ruleId = sweepRuleEditor!.ruleId!;
-      const updates = { name: ruleName, detail, criteria: validCriteria, criteriaLogic, action: selectedAction, delayHours };
+      const updates = { name: ruleName, detail, criteria: validCriteria, criteriaLogic, action: selectedAction, delayHours: effectiveDelay };
 
       // Update in-memory store immediately
       updateSweepRule(ruleId, updates);
 
-      // Persist to DB
+      // Persist to DB and re-apply server-side
       if (!useMockData && user?.id) {
         try {
           await updateSweepRuleMutation.mutateAsync({
@@ -128,8 +148,18 @@ export function SweepRuleEditor() {
             criteria: validCriteria,
             criteria_logic: criteriaLogic,
             action: selectedAction,
-            delay_hours: delayHours,
+            delay_hours: effectiveDelay,
           });
+
+          // Re-apply the updated rule server-side against the full emails table
+          await applySweepRuleMutation.mutateAsync({
+            ruleId,
+            userId: user.id,
+            criteria: validCriteria,
+            criteriaLogic,
+            action: selectedAction,
+            delayHours: effectiveDelay,
+          }).catch(err => console.error('[Sweep] Edge function re-apply failed:', err));
         } catch (err) {
           console.error('[Sweep] Failed to update rule:', err);
           setError('Failed to save rule. Please try again.');
@@ -144,8 +174,8 @@ export function SweepRuleEditor() {
     if (useMockData || !user?.id) {
       // Mock mode or no auth: update in-memory store only
       console.warn('[Sweep] No user auth, falling back to in-memory only. useMockData:', useMockData, 'user:', user?.id);
-      applySweepAction(validCriteria, criteriaLogic, selectedAction, delayHours);
-      addSweepRule({ name: ruleName, detail, criteria: validCriteria, criteriaLogic, action: selectedAction, delayHours });
+      applySweepAction(validCriteria, criteriaLogic, selectedAction, effectiveDelay);
+      addSweepRule({ name: ruleName, detail, criteria: validCriteria, criteriaLogic, action: selectedAction, delayHours: effectiveDelay });
     } else {
       // Real mode: persist rule to DB, then queue matching emails
       const userId = user.id;
@@ -162,7 +192,7 @@ export function SweepRuleEditor() {
           criteria: validCriteria,
           criteria_logic: criteriaLogic,
           action: selectedAction,
-          delay_hours: delayHours,
+          delay_hours: effectiveDelay,
         });
       } catch (err) {
         console.error('[Sweep] Failed to create rule:', err);
@@ -170,42 +200,40 @@ export function SweepRuleEditor() {
         return;
       }
 
-      // 2. Find all matching emails and add them to the sweep queue
-      const currentEmails = useStore.getState().emails;
-      const sweepEmailIds = new Set(useStore.getState().sweepEmails.map(e => e.id));
-      const matching = currentEmails.filter(e =>
-        emailMatchesCriteria(e, validCriteria, criteriaLogic) && !sweepEmailIds.has(e.id)
-      );
-
-      // Queue matching emails in parallel batches of 10
-      for (let i = 0; i < matching.length; i += 10) {
-        const batch = matching.slice(i, i + 10);
-        await Promise.all(batch.map(email =>
-          addToSweepQueueMutation.mutateAsync({
-            userId,
-            emailId: email.id,
-            sweepRuleId: createdRule.id,
-            action: selectedAction,
-            delayHours,
-          }).catch(err => console.error(`[Sweep] Failed to queue email ${email.id}:`, err))
-        ));
+      // 2. Apply rule server-side against the full emails table
+      try {
+        await applySweepRuleMutation.mutateAsync({
+          ruleId: createdRule.id,
+          userId,
+          criteria: validCriteria,
+          criteriaLogic,
+          action: selectedAction,
+          delayHours: effectiveDelay,
+        });
+      } catch (err) {
+        console.error('[Sweep] Edge function apply failed:', err);
       }
 
       // Also update in-memory store immediately for instant UI feedback
-      applySweepAction(validCriteria, criteriaLogic, selectedAction, delayHours);
-      addSweepRule({ name: ruleName, detail, criteria: validCriteria, criteriaLogic, action: selectedAction, delayHours });
+      applySweepAction(validCriteria, criteriaLogic, selectedAction, effectiveDelay);
+      addSweepRule({ name: ruleName, detail, criteria: validCriteria, criteriaLogic, action: selectedAction, delayHours: effectiveDelay });
     }
 
     closeSweepRuleEditor();
   };
 
   const hasValidCriteria = criteria.some(c => c.value.trim());
-  const isApplying = createSweepRuleMutation.isPending || addToSweepQueueMutation.isPending || updateSweepRuleMutation.isPending;
+  const isApplying = createSweepRuleMutation.isPending || applySweepRuleMutation.isPending || updateSweepRuleMutation.isPending;
 
-  const options = [
-    { key: 'archive', title: 'Archive', desc: 'Automatically archive matching messages after the delay', danger: false },
-    { key: 'delete', title: 'Delete', desc: 'Permanently delete matching messages after the delay', danger: true },
-  ];
+  const delayLabel = `Delay before ${isDanger ? 'deleting' : 'archiving'}`;
+
+  const applyLabel = isApplying
+    ? (isEditMode ? 'Saving...' : 'Applying...')
+    : isEditMode
+      ? 'Save'
+      : mode === 'keep_newest'
+        ? 'Apply'
+        : isDanger ? 'Delete All' : 'Apply';
 
   return (
     <div
@@ -303,34 +331,74 @@ export function SweepRuleEditor() {
 
           {/* Radio options */}
           <div className="sweep-rule-options">
-            {options.map(opt => (
-              <div
-                key={opt.key}
-                className={`sweep-rule-option${selectedAction === opt.key ? ' selected' : ''}${opt.danger ? ' danger' : ''}`}
-                onClick={() => setSelectedAction(opt.key)}
-              >
-                <div className="sweep-rule-option-radio" />
-                <div className="sweep-rule-option-content">
-                  <div className="sweep-rule-option-title">{opt.title}</div>
-                  <div className="sweep-rule-option-desc">{opt.desc}</div>
-                </div>
+            {/* Only Keep Most Recent */}
+            <div
+              className={`sweep-rule-option${mode === 'keep_newest' ? ' selected' : ''}`}
+              onClick={() => setMode('keep_newest')}
+            >
+              <div className="sweep-rule-option-radio" />
+              <div className="sweep-rule-option-content">
+                <div className="sweep-rule-option-title">Only Keep Most Recent</div>
+                <div className="sweep-rule-option-desc">When a new matching email arrives, sweep all older matches</div>
+                {mode === 'keep_newest' && (
+                  <div className="sweep-rule-sub-options">
+                    <div
+                      className={`sweep-rule-sub-option${subAction === 'archive' ? ' selected' : ''}`}
+                      onClick={(e) => { e.stopPropagation(); setSubAction('archive'); }}
+                    >
+                      <div className="sweep-rule-sub-radio" />
+                      <span>Archive older</span>
+                    </div>
+                    <div
+                      className={`sweep-rule-sub-option${subAction === 'delete' ? ' selected danger' : ''}`}
+                      onClick={(e) => { e.stopPropagation(); setSubAction('delete'); }}
+                    >
+                      <div className="sweep-rule-sub-radio" />
+                      <span>Delete older</span>
+                    </div>
+                  </div>
+                )}
               </div>
-            ))}
+            </div>
+            {/* Archive */}
+            <div
+              className={`sweep-rule-option${mode === 'always' && subAction === 'archive' ? ' selected' : ''}`}
+              onClick={() => { setMode('always'); setSubAction('archive'); }}
+            >
+              <div className="sweep-rule-option-radio" />
+              <div className="sweep-rule-option-content">
+                <div className="sweep-rule-option-title">Archive</div>
+                <div className="sweep-rule-option-desc">Automatically archive matching messages after the delay</div>
+              </div>
+            </div>
+            {/* Delete */}
+            <div
+              className={`sweep-rule-option${mode === 'always' && subAction === 'delete' ? ' selected danger' : ''}`}
+              onClick={() => { setMode('always'); setSubAction('delete'); }}
+            >
+              <div className="sweep-rule-option-radio" />
+              <div className="sweep-rule-option-content">
+                <div className="sweep-rule-option-title">Delete</div>
+                <div className="sweep-rule-option-desc">Permanently delete matching messages after the delay</div>
+              </div>
+            </div>
           </div>
           {/* Delay dropdown */}
-          <div className="sweep-rule-delay">
-            <label>Delay before {isDanger ? 'deleting' : 'archiving'}</label>
-            <select
-              value={String(delayHours)}
-              onChange={(e) => setDelayHours(Number(e.target.value))}
-            >
-              <option value="1">1 hour</option>
-              <option value="6">6 hours</option>
-              <option value="12">12 hours</option>
-              <option value="24">24 hours</option>
-              <option value="48">48 hours</option>
-              <option value="168">7 days</option>
-            </select>
+          <div className="sweep-rule-delay" style={mode === 'keep_newest' ? { opacity: 0.4, pointerEvents: 'none' } : undefined}>
+            <label>{mode === 'keep_newest' ? 'Older emails are swept immediately' : delayLabel}</label>
+            {mode !== 'keep_newest' && (
+              <select
+                value={String(delayHours)}
+                onChange={(e) => setDelayHours(Number(e.target.value))}
+              >
+                <option value="1">1 hour</option>
+                <option value="6">6 hours</option>
+                <option value="12">12 hours</option>
+                <option value="24">24 hours</option>
+                <option value="48">48 hours</option>
+                <option value="168">7 days</option>
+              </select>
+            )}
           </div>
         </div>
         {error && <div style={{ padding: '0 16px 8px', color: '#ef4444', fontSize: '12px' }}>{error}</div>}
@@ -338,12 +406,12 @@ export function SweepRuleEditor() {
         <div className="criteria-footer">
           <button className="btn-secondary" onClick={closeSweepRuleEditor}>Cancel</button>
           <button
-            className={isDanger ? 'btn-danger' : 'btn-primary'}
+            className={isDanger && mode !== 'keep_newest' ? 'btn-danger' : 'btn-primary'}
             onClick={handleApply}
             disabled={!hasValidCriteria || isApplying}
             style={(!hasValidCriteria || isApplying) ? { opacity: 0.5, cursor: 'default' } : undefined}
           >
-            {isApplying ? (isEditMode ? 'Saving...' : 'Applying...') : isEditMode ? 'Save' : isDanger ? 'Delete All' : 'Apply'}
+            {applyLabel}
           </button>
         </div>
       </div>

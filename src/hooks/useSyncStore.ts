@@ -3,11 +3,12 @@ import { useStore } from '../store/index.ts';
 import { useAuth } from './useAuth.ts';
 import { useProfile, useUpdateProfile } from './useProfile.ts';
 import { useColumns, useReorderColumns, useCreateColumn, useUpdateColumn, useDeleteColumn } from './useColumns.ts';
-import { useSweepRules } from './useSweepRules.ts';
+import { useSweepRules, useApplySweepRule } from './useSweepRules.ts';
 import { useEmailAccounts, useReorderEmailAccounts, useUpdateEmailAccount } from './useEmailAccounts.ts';
 import { useEmails, useSyncAccount } from './useEmails.ts';
 import { useSweepQueue } from './useSweepQueue.ts';
 import { useRealtime } from './useRealtime.ts';
+import { emailMatchesCriteria } from '../lib/emailFilter.ts';
 import type { Column, Account, SweepRule, SweepEmail, Email } from '../types/index.ts';
 
 const useMockData = import.meta.env.VITE_USE_MOCK_DATA === 'true';
@@ -42,6 +43,12 @@ export function useSyncStore() {
 
   // Track which accounts we've already triggered initial sync for
   const syncedAccountsRef = useRef<Set<string>>(new Set());
+
+  // Track previous email IDs for new-arrival detection
+  const prevEmailIdsRef = useRef<Set<string> | null>(null);
+  const applySweepRuleMutation = useApplySweepRule();
+  // Track whether we've done the one-time hydration sweep pass
+  const sweepHydrationDoneRef = useRef(false);
 
   // Subscribe to Supabase Realtime for live updates
   useRealtime(useMockData ? undefined : userId);
@@ -152,23 +159,109 @@ export function useSyncStore() {
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   // Sync sweep queue → store (as SweepEmail[])
+  // Preserves client-side state (expiring animations, ticking countdowns) to avoid
+  // re-triggering fire/archive animations when the server data refetches.
+  // Items that are already past their scheduled_at are excluded — the server-side
+  // sweep-execute function handles those; we don't animate them client-side.
   useEffect(() => {
     if (useMockData || !dbSweepQueue) return;
-    const mapped: SweepEmail[] = dbSweepQueue.map(item => {
+    const existing = useStore.getState().sweepEmails;
+    const existingMap = new Map(existing.map(e => [e.id, e]));
+
+    const merged: SweepEmail[] = [];
+    for (const item of dbSweepQueue) {
+      const prev = existingMap.get(item.email_id);
+      // If the item is already expiring on the client, preserve that state
+      if (prev?.expiring) { merged.push(prev); continue; }
+
       const scheduledAt = new Date(item.scheduled_at).getTime();
       const secondsRemaining = Math.max(0, Math.floor((scheduledAt - Date.now()) / 1000));
-      return {
+
+      // Skip items that are already past due — let the server executor handle them
+      // Only show items that the client already knew about (prev exists) or still have time left
+      if (secondsRemaining <= 0 && !prev) continue;
+
+      merged.push({
         id: item.email_id,
         accountId: item.email?.account_id || '',
         sender: item.email?.sender_name || item.email?.sender_email || '',
         subject: item.email?.subject || '',
-        sweepSeconds: secondsRemaining,
+        // Keep the client's ticking countdown if it's more recent (lower) than the server value
+        sweepSeconds: prev ? Math.min(prev.sweepSeconds, secondsRemaining) : secondsRemaining,
         exempted: false,
         action: item.action,
-      };
-    });
-    useStore.setState({ sweepEmails: mapped });
+      });
+    }
+    useStore.setState({ sweepEmails: merged });
   }, [dbSweepQueue]);
+
+  // One-time hydration: apply all enabled sweep rules server-side on startup.
+  // This catches emails that arrived while the app was closed or before a rule existed.
+  useEffect(() => {
+    if (useMockData || !userId || sweepHydrationDoneRef.current) return;
+    if (!dbSweepRules || dbSweepRules.length === 0 || !emailsFetched) return;
+
+    sweepHydrationDoneRef.current = true;
+
+    const enabledRules = dbSweepRules.filter(r => r.is_enabled);
+    for (const rule of enabledRules) {
+      const criteria = rule.criteria || (rule.sender_pattern ? [{ field: 'from', op: 'contains', value: rule.sender_pattern }] : []);
+      if (criteria.length === 0) continue;
+
+      applySweepRuleMutation.mutate({
+        ruleId: rule.id,
+        userId,
+        criteria,
+        criteriaLogic: rule.criteria_logic || 'and',
+        action: rule.action,
+        delayHours: rule.delay_hours,
+      });
+    }
+  }, [dbSweepRules, emailsFetched, userId]);
+
+  // Detect newly arrived emails and evaluate ALL enabled sweep rules server-side
+  useEffect(() => {
+    if (useMockData) return;
+    const { emails, sweepRules } = useStore.getState();
+    const currentIds = new Set(emails.map(e => e.id));
+
+    // On first render, just capture the baseline
+    if (prevEmailIdsRef.current === null) {
+      prevEmailIdsRef.current = currentIds;
+      return;
+    }
+
+    // Find truly new email IDs
+    const newIds = [...currentIds].filter(id => !prevEmailIdsRef.current!.has(id));
+    prevEmailIdsRef.current = currentIds;
+
+    if (newIds.length === 0) return;
+
+    const enabledRules = sweepRules.filter(r => r.enabled);
+    if (enabledRules.length === 0) return;
+
+    const newEmails = emails.filter(e => newIds.includes(e.id));
+
+    for (const rule of enabledRules) {
+      // Check if any of the new emails match this rule
+      const newMatches = newEmails.filter(e => emailMatchesCriteria(e, rule.criteria, rule.criteriaLogic));
+      if (newMatches.length === 0) continue;
+
+      // New matching email(s) arrived — apply server-side against the full DB
+      useStore.getState().applySweepAction(rule.criteria, rule.criteriaLogic, rule.action, rule.delayHours);
+
+      if (userId) {
+        applySweepRuleMutation.mutate({
+          ruleId: rule.id,
+          userId,
+          criteria: rule.criteria,
+          criteriaLogic: rule.criteriaLogic,
+          action: rule.action,
+          delayHours: rule.delayHours,
+        });
+      }
+    }
+  }, [dbEmailPages]); // Re-run when emails change
 
   // Auto-trigger initial sync for newly connected accounts (staggered to avoid rate limits)
   useEffect(() => {

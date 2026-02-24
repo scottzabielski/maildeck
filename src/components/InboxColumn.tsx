@@ -13,7 +13,7 @@ interface InboxColumnProps {
 }
 
 export function InboxColumn({ accountId }: InboxColumnProps) {
-  const { emails, accounts, disabledAccountIds, selectedEmail, sweepEmails, columns, sweepRules, _fetchNextPage, _hasNextPage, _isFetchingNextPage } = useStore();
+  const { emails, accounts, disabledAccountIds, selectedEmail, sweepEmails, columns, sweepRules, searchQuery, globalInboxFilter, _fetchNextPage, _hasNextPage, _isFetchingNextPage } = useStore();
   const selectedEmailId = selectedEmail ? selectedEmail.emailId : null;
 
   const filterKey = accountId || 'all-inboxes';
@@ -33,14 +33,23 @@ export function InboxColumn({ accountId }: InboxColumnProps) {
   const filterMenuRef = useRef<HTMLDivElement>(null);
 
   const columnEmails = useMemo(() => {
+    const q = searchQuery.toLowerCase();
     let filtered;
     if (accountId) {
       filtered = emails.filter(e => e.accountId === accountId && !disabledAccountIds.has(e.accountId));
     } else {
       filtered = emails.filter(e => !disabledAccountIds.has(e.accountId));
     }
+    if (q) {
+      filtered = filtered.filter(e =>
+        e.sender.toLowerCase().includes(q)
+        || (e.senderEmail || '').toLowerCase().includes(q)
+        || e.subject.toLowerCase().includes(q)
+        || e.snippet.toLowerCase().includes(q)
+      );
+    }
     return [...filtered].sort((a, b) => b.time - a.time);
-  }, [emails, accountId, disabledAccountIds]);
+  }, [emails, accountId, disabledAccountIds, searchQuery]);
 
   const sweepLookup = useMemo(() => {
     const map = new Map<string, { seconds: number; action: string }>();
@@ -76,8 +85,11 @@ export function InboxColumn({ accountId }: InboxColumnProps) {
     return map;
   }, [columnEmails, enabledStreams]);
 
+  // Per-column filter overrides global; if local is 'none', fall back to global
+  const effectiveFilter = filterMode !== 'none' ? filterMode : globalInboxFilter;
+
   const displayEmails = useMemo(() => {
-    if (filterMode === 'none') return columnEmails;
+    if (effectiveFilter === 'none') return columnEmails;
 
     return columnEmails.filter(email => {
       const inStream = matchedStreamsMap.has(email.id);
@@ -85,12 +97,12 @@ export function InboxColumn({ accountId }: InboxColumnProps) {
         emailMatchesCriteria(email, rule.criteria, rule.criteriaLogic)
       );
 
-      if (filterMode === 'no-stream') return !inStream;
-      if (filterMode === 'no-sweep') return !hasSweep;
+      if (effectiveFilter === 'no-stream') return !inStream;
+      if (effectiveFilter === 'no-sweep') return !hasSweep;
       // 'neither'
       return !inStream && !hasSweep;
     });
-  }, [columnEmails, filterMode, matchedStreamsMap, enabledSweepRules]);
+  }, [columnEmails, effectiveFilter, matchedStreamsMap, enabledSweepRules]);
 
   const account = accountId ? accounts.find(a => a.id === accountId) : null;
   const accent = account ? account.color : '#3b82f6';
@@ -184,7 +196,7 @@ export function InboxColumn({ accountId }: InboxColumnProps) {
     return () => document.removeEventListener('mousedown', handleClick);
   }, [filterMenuOpen]);
 
-  const filterActive = filterMode !== 'none';
+  const filterActive = effectiveFilter !== 'none';
 
   return (
     <motion.div
@@ -213,7 +225,7 @@ export function InboxColumn({ accountId }: InboxColumnProps) {
             onMouseDown={handleFilterMouseDown}
             onMouseUp={handleFilterMouseUp}
             onMouseLeave={handleFilterMouseLeave}
-            title={filterActive ? `Filter: ${filterMode}` : 'Filter uncategorized'}
+            title={filterActive ? `Filter: ${effectiveFilter}` : 'Filter uncategorized'}
           >
             <Icons.FilterLines />
           </button>

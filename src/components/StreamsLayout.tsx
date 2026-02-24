@@ -55,8 +55,8 @@ export function StreamsLayout() {
   }
 
   return (
-    <LayoutGroup>
-      <div className="deck-layout">
+    <div className="deck-layout">
+      <LayoutGroup>
         <Reorder.Group
           as="div"
           axis="x"
@@ -73,8 +73,8 @@ export function StreamsLayout() {
             </button>
           </div>
         </Reorder.Group>
-        <SweepColumn key="sweep" />
-      </div>
-    </LayoutGroup>
+      </LayoutGroup>
+      <SweepColumn key="sweep" />
+    </div>
   );
 }

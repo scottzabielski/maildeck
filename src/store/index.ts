@@ -147,6 +147,12 @@ export interface StreamEditorPrefill {
   toEmail: string;
 }
 
+export interface ColumnContextMenuState {
+  x: number;
+  y: number;
+  columnId: string;
+}
+
 export interface StoreState {
   theme: string;
   accounts: Account[];
@@ -163,6 +169,11 @@ export interface StoreState {
   creatingColumn: boolean;
   undoAction: UndoAction | null;
   contextMenu: ContextMenuState | null;
+  columnContextMenu: ColumnContextMenuState | null;
+  searchQuery: string;
+  globalInboxFilter: 'none' | 'no-stream' | 'no-sweep' | 'neither';
+  globalStreamNoSweep: boolean;
+  soundMuted: boolean;
   sweepDelayHours: number;
   sweepRuleEditor: SweepRuleEditorState | null;
   streamEditorPrefill: StreamEditorPrefill | null;
@@ -187,6 +198,12 @@ export interface StoreState {
   toggleColumn: (columnId: string) => void;
   openContextMenu: (x: number, y: number, emailId: string, columnId: string) => void;
   closeContextMenu: () => void;
+  openColumnContextMenu: (x: number, y: number, columnId: string) => void;
+  closeColumnContextMenu: () => void;
+  setSearchQuery: (query: string) => void;
+  setGlobalInboxFilter: (filter: 'none' | 'no-stream' | 'no-sweep' | 'neither') => void;
+  toggleGlobalStreamNoSweep: () => void;
+  toggleSoundMuted: () => void;
   selectEmail: (emailId: string, sourceColumnId: string, sourceAccountId: string) => void;
   deselectEmail: () => void;
   toggleRead: (emailId: string) => void;
@@ -201,6 +218,7 @@ export interface StoreState {
   setSweepDelayHours: (hours: number) => void;
   openSweepRuleEditor: (emailId: string) => void;
   openSweepRuleEditorForRule: (ruleId: string) => void;
+  openSweepRuleEditorForStream: (columnId: string) => void;
   closeSweepRuleEditor: () => void;
   updateSweepRule: (ruleId: string, updates: Partial<Omit<SweepRule, 'id'>>) => void;
   openStreamEditorFromEmail: (emailId: string) => void;
@@ -251,6 +269,11 @@ export const useStore = create<StoreState>((set, get) => ({
   creatingColumn: false,
   undoAction: null,
   contextMenu: null,
+  columnContextMenu: null,
+  searchQuery: '',
+  globalInboxFilter: 'none',
+  globalStreamNoSweep: false,
+  soundMuted: true,
   sweepDelayHours: 24,
   sweepRuleEditor: null,
   streamEditorPrefill: null,
@@ -315,6 +338,12 @@ export const useStore = create<StoreState>((set, get) => ({
 
   openContextMenu: (x, y, emailId, columnId) => set({ contextMenu: { x, y, emailId, columnId } }),
   closeContextMenu: () => set({ contextMenu: null }),
+  openColumnContextMenu: (x, y, columnId) => set({ columnContextMenu: { x, y, columnId } }),
+  closeColumnContextMenu: () => set({ columnContextMenu: null }),
+  setSearchQuery: (query) => set({ searchQuery: query }),
+  setGlobalInboxFilter: (filter) => set({ globalInboxFilter: filter }),
+  toggleGlobalStreamNoSweep: () => set(s => ({ globalStreamNoSweep: !s.globalStreamNoSweep })),
+  toggleSoundMuted: () => set(s => ({ soundMuted: !s.soundMuted })),
 
   selectEmail: (emailId, sourceColumnId, sourceAccountId) => {
     const viewMode = get().activeViewId;
@@ -468,6 +497,16 @@ export const useStore = create<StoreState>((set, get) => ({
       ruleId,
     } });
   },
+  openSweepRuleEditorForStream: (columnId) => {
+    set({ sweepRuleEditor: {
+      emailId: '',
+      sender: '',
+      senderEmail: '',
+      subject: '',
+      toEmail: '',
+      columnId,
+    } });
+  },
   closeSweepRuleEditor: () => set({ sweepRuleEditor: null }),
   updateSweepRule: (ruleId, updates) => set(s => ({
     sweepRules: s.sweepRules.map(r => r.id === ruleId ? { ...r, ...updates } : r),
@@ -509,12 +548,22 @@ export const useStore = create<StoreState>((set, get) => ({
 
   applySweepAction: (criteria, criteriaLogic, action, delayHours) => {
     const delaySec = delayHours * 3600;
+    const isKeepNewest = action.startsWith('keep_newest_');
+    const terminalAction = isKeepNewest ? action.replace('keep_newest_', '') : action;
     set(s => {
       const matching = s.emails.filter(e => emailMatchesCriteria(e, criteria, criteriaLogic));
       const alreadyInSweep = new Set(s.sweepEmails.map(e => e.id));
-      const newSweepItems = matching
+
+      let toSweep = matching;
+      if (isKeepNewest && matching.length > 1) {
+        // Sort by time descending (newest first), skip the newest
+        const sorted = [...matching].sort((a, b) => b.time - a.time);
+        toSweep = sorted.slice(1);
+      }
+
+      const newSweepItems = toSweep
         .filter(e => !alreadyInSweep.has(e.id))
-        .map(e => ({ id: e.id, accountId: e.accountId, sender: e.sender, subject: e.subject, sweepSeconds: delaySec, exempted: false }));
+        .map(e => ({ id: e.id, accountId: e.accountId, sender: e.sender, subject: e.subject, sweepSeconds: delaySec, exempted: false, action: terminalAction }));
       return {
         sweepEmails: [...s.sweepEmails, ...newSweepItems].sort((a, b) => a.sweepSeconds - b.sweepSeconds),
       };

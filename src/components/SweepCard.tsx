@@ -52,7 +52,11 @@ interface SweepCardProps {
 }
 
 export function SweepCard({ email }: SweepCardProps) {
-  const { accounts, exemptSweepEmail, removeSweepEmail, selectEmail } = useStore();
+  const accounts = useStore(s => s.accounts);
+  const exemptSweepEmail = useStore(s => s.exemptSweepEmail);
+  const removeSweepEmail = useStore(s => s.removeSweepEmail);
+  const selectEmail = useStore(s => s.selectEmail);
+  const soundMuted = useStore(s => s.soundMuted);
   const account = accounts.find(a => a.id === email.accountId);
   const cdClass = getCountdownClass(email.sweepSeconds);
   const isExpiring = email.expiring === true;
@@ -77,7 +81,7 @@ export function SweepCard({ email }: SweepCardProps) {
       removeSweepEmailRef.current(email.id);
     }, 1000);
 
-    if (isDelete) {
+    if (isDelete && !soundMuted) {
       playFireSound();
     }
 

@@ -13,18 +13,41 @@ interface ColumnProps {
 }
 
 export function Column({ column, dragControls }: ColumnProps) {
-  const { emails, accounts, disabledAccountIds, openCriteriaEditor, selectedEmail, sweepEmails, _fetchNextPage, _hasNextPage, _isFetchingNextPage } = useStore();
+  const { emails, accounts, disabledAccountIds, openColumnContextMenu, selectedEmail, sweepEmails, sweepRules, searchQuery, globalStreamNoSweep, _fetchNextPage, _hasNextPage, _isFetchingNextPage } = useStore();
   const selectedEmailId = selectedEmail ? selectedEmail.emailId : null;
-  const columnEmails = useMemo(
-    () => emails.filter(e => {
+
+  const enabledSweepRules = useMemo(
+    () => sweepRules.filter(r => r.enabled),
+    [sweepRules]
+  );
+
+  const columnEmails = useMemo(() => {
+    return emails.filter(e => {
       if (disabledAccountIds.has(e.accountId)) return false;
-      // Mock data uses hardcoded columnId; real data uses criteria matching
       if (e.columnId) return e.columnId === column.id;
       if (column.criteria.length > 0) return emailMatchesCriteria(e, column.criteria, column.criteriaLogic);
       return false;
-    }),
-    [emails, column.id, column.criteria, column.criteriaLogic, disabledAccountIds]
-  );
+    });
+  }, [emails, column.id, column.criteria, column.criteriaLogic, disabledAccountIds]);
+
+  const displayEmails = useMemo(() => {
+    let filtered = columnEmails;
+    const q = searchQuery.toLowerCase();
+    if (q) {
+      filtered = filtered.filter(e =>
+        e.sender.toLowerCase().includes(q)
+        || (e.senderEmail || '').toLowerCase().includes(q)
+        || e.subject.toLowerCase().includes(q)
+        || e.snippet.toLowerCase().includes(q)
+      );
+    }
+    if (globalStreamNoSweep) {
+      filtered = filtered.filter(e =>
+        !enabledSweepRules.some(rule => emailMatchesCriteria(e, rule.criteria, rule.criteriaLogic))
+      );
+    }
+    return filtered;
+  }, [columnEmails, searchQuery, globalStreamNoSweep, enabledSweepRules]);
   // Build a lookup from email ID → sweep countdown seconds
   const sweepLookup = useMemo(() => {
     const map = new Map<string, { seconds: number; action: string }>();
@@ -81,21 +104,16 @@ export function Column({ column, dragControls }: ColumnProps) {
         className="column-header"
         style={{ borderTopColor: column.accent, cursor: dragControls ? 'grab' : undefined }}
         onPointerDown={(e) => dragControls?.start(e)}
+        onContextMenu={(e) => { e.preventDefault(); openColumnContextMenu(e.clientX, e.clientY, column.id); }}
       >
         <span className="column-drag-handle"><Icons.DragHandle /></span>
         <span className="column-icon" style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: column.accent }} />
         <span className="column-name">{column.name}</span>
-        <span className="column-count">{unreadCount > 0 ? unreadCount : columnEmails.length}</span>
-        <button
-          className="column-filter-btn"
-          onClick={() => openCriteriaEditor(column.id)}
-        >
-          <Icons.Filter />
-        </button>
+        <span className="column-count">{unreadCount > 0 ? unreadCount : displayEmails.length}</span>
       </div>
       <div className="column-emails" ref={scrollRef} onScroll={handleScroll}>
         <AnimatePresence initial={false}>
-          {columnEmails.map(email => (
+          {displayEmails.map(email => (
             <EmailCard
               key={email.id}
               email={email}
