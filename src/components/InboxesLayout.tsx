@@ -5,6 +5,7 @@ import { useStore } from '../store/index.ts';
 
 export function InboxesLayout() {
   const accounts = useStore(s => s.accounts);
+  const disabledAccountIds = useStore(s => s.disabledAccountIds);
   const selectedEmail = useStore(s => s.selectedEmail);
   const isViewing = selectedEmail && selectedEmail.viewMode === 'inboxes';
 
@@ -26,7 +27,7 @@ export function InboxesLayout() {
     <LayoutGroup>
       <div className="deck-layout">
         <InboxColumn key="all-inboxes" accountId={null} />
-        {accounts.map(a => (
+        {accounts.filter(a => !disabledAccountIds.has(a.id)).map(a => (
           <InboxColumn key={a.id} accountId={a.id} />
         ))}
       </div>
