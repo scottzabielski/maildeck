@@ -565,20 +565,31 @@ export const useStore = create<StoreState>((set, get) => ({
     const terminalAction = isKeepNewest ? action.replace('keep_newest_', '') : action;
     set(s => {
       const matching = s.emails.filter(e => emailMatchesCriteria(e, criteria, criteriaLogic));
-      const alreadyInSweep = new Set(s.sweepEmails.map(e => e.id));
+      const sweepMap = new Map(s.sweepEmails.map(e => [e.id, e]));
 
       let toSweep = matching;
       if (isKeepNewest && matching.length > 1) {
-        // Sort by time descending (newest first), skip the newest
         const sorted = [...matching].sort((a, b) => b.time - a.time);
         toSweep = sorted.slice(1);
       }
 
-      const newSweepItems = toSweep
-        .filter(e => !alreadyInSweep.has(e.id))
-        .map(e => ({ id: e.id, accountId: e.accountId, sender: e.sender, subject: e.subject, sweepSeconds: delaySec, exempted: false, action: terminalAction }));
+      // Build updated sweep list: replace existing items only if new rule is sooner
+      const updatedSweep = [...s.sweepEmails];
+      const newItems: SweepEmail[] = [];
+      for (const e of toSweep) {
+        const existing = sweepMap.get(e.id);
+        if (existing) {
+          // Replace only if new rule sweeps sooner
+          if (delaySec < existing.sweepSeconds) {
+            const idx = updatedSweep.findIndex(s => s.id === e.id);
+            if (idx !== -1) updatedSweep[idx] = { ...existing, sweepSeconds: delaySec, action: terminalAction };
+          }
+        } else {
+          newItems.push({ id: e.id, accountId: e.accountId, sender: e.sender, subject: e.subject, sweepSeconds: delaySec, exempted: false, action: terminalAction });
+        }
+      }
       return {
-        sweepEmails: [...s.sweepEmails, ...newSweepItems].sort((a, b) => a.sweepSeconds - b.sweepSeconds),
+        sweepEmails: [...updatedSweep, ...newItems].sort((a, b) => a.sweepSeconds - b.sweepSeconds),
       };
     });
   },

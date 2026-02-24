@@ -67,24 +67,40 @@ Deno.serve(async (req) => {
       return jsonResponse({ queued: 0 });
     }
 
+    // Compute scheduling up front so we can compare with existing queue items
+    const isKeepNewest = action.startsWith('keep_newest_');
+    const terminalAction = (action === 'delete' || action === 'keep_newest_delete')
+      ? 'delete'
+      : 'archive';
+    const scheduledAt = new Date(
+      Date.now() + (isKeepNewest ? 0 : delay_hours) * 3600 * 1000
+    ).toISOString();
+
     // Exclude emails already in sweep_queue (pending) for this rule.
-    // Also clear out old executed rows for matching emails so they can be re-queued
-    // (e.g., if the provider action failed or the email reappeared in the inbox).
+    // Also clear out old executed rows for matching emails so they can be re-queued.
+    // If an email already has a pending sweep with a LATER scheduled_at, replace it
+    // with the sooner one (sooner rule wins).
     const matchingIds = matchingEmails.map(e => e.id);
 
     const { data: existingQueue } = await admin
       .from('sweep_queue')
-      .select('email_id, executed')
+      .select('email_id, executed, scheduled_at')
       .eq('user_id', user_id)
       .in('email_id', matchingIds);
 
     const pendingIds = new Set<string>();
     const executedIds: string[] = [];
+    const replaceSoonerIds: string[] = [];
     for (const q of existingQueue || []) {
       if (q.executed) {
         executedIds.push(q.email_id);
       } else {
-        pendingIds.add(q.email_id);
+        // If the new scheduled_at is sooner, replace the existing pending item
+        if (new Date(scheduledAt).getTime() < new Date(q.scheduled_at).getTime()) {
+          replaceSoonerIds.push(q.email_id);
+        } else {
+          pendingIds.add(q.email_id);
+        }
       }
     }
 
@@ -97,10 +113,18 @@ Deno.serve(async (req) => {
         .in('email_id', executedIds);
     }
 
+    // Delete pending rows that will be replaced with a sooner scheduled_at
+    if (replaceSoonerIds.length > 0) {
+      await admin
+        .from('sweep_queue')
+        .delete()
+        .eq('user_id', user_id)
+        .in('email_id', replaceSoonerIds);
+    }
+
     let eligible = matchingEmails.filter(e => !pendingIds.has(e.id));
 
     // For keep_newest actions, skip the most recent email
-    const isKeepNewest = action.startsWith('keep_newest_');
     if (isKeepNewest && eligible.length > 1) {
       eligible.sort((a, b) =>
         new Date(b.received_at).getTime() - new Date(a.received_at).getTime()
@@ -109,15 +133,6 @@ Deno.serve(async (req) => {
     } else if (isKeepNewest && eligible.length <= 1) {
       return jsonResponse({ queued: 0 });
     }
-
-    // Determine terminal action for the queue
-    const terminalAction = (action === 'delete' || action === 'keep_newest_delete')
-      ? 'delete'
-      : 'archive';
-
-    const scheduledAt = new Date(
-      Date.now() + (isKeepNewest ? 0 : delay_hours) * 3600 * 1000
-    ).toISOString();
 
     // Batch-insert into sweep_queue (chunks of 500 to stay within limits)
     let totalQueued = 0;

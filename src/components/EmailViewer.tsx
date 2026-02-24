@@ -192,9 +192,7 @@ export function EmailViewer() {
             </div>
             <div className="email-viewer-timestamp">
               {timestamp}
-              {email.toEmail && (
-                <span className="email-viewer-to"> to {email.toEmail}</span>
-              )}
+              <span className="email-viewer-to"> to {email.toEmail || account?.email || 'me'}</span>
             </div>
           </div>
           {hasSweep && (

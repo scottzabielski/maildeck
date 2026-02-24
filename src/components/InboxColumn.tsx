@@ -124,10 +124,10 @@ export function InboxColumn({ accountId }: InboxColumnProps) {
   }, [scrollKey]);
 
   // Auto-fetch more pages if the column isn't scrollable (filter narrows results).
-  // Uses an interval to keep checking since each page load may not add enough filtered matches.
+  // Skip when search is active — fetching more pages won't help since search filters them.
   useEffect(() => {
     const el = scrollRef.current;
-    if (!el || !_hasNextPage || !_fetchNextPage) return;
+    if (!el || !_hasNextPage || !_fetchNextPage || searchQuery) return;
     const check = () => {
       if (_isFetchingNextPage) return;
       const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 200;
@@ -138,7 +138,7 @@ export function InboxColumn({ accountId }: InboxColumnProps) {
     check();
     const id = setInterval(check, 300);
     return () => clearInterval(id);
-  }, [_hasNextPage, _isFetchingNextPage, _fetchNextPage]);
+  }, [_hasNextPage, _isFetchingNextPage, _fetchNextPage, searchQuery]);
 
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
@@ -270,7 +270,7 @@ export function InboxColumn({ accountId }: InboxColumnProps) {
             />
           ))}
         </AnimatePresence>
-        {_isFetchingNextPage && <div className="column-load-more" />}
+        {_isFetchingNextPage && !searchQuery && <div className="column-load-more" />}
       </div>
     </motion.div>
   );

@@ -13,10 +13,11 @@ interface EmailCardProps {
   selectedEmailId: string | null;
   sweepSeconds?: number;
   sweepAction?: string;
+  matchedSweepRule?: { action: string };
   matchedStreams?: Array<{ id: string; accent: string }>;
 }
 
-export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, selectedEmailId, sweepSeconds, sweepAction, matchedStreams }: EmailCardProps) {
+export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, selectedEmailId, sweepSeconds, sweepAction, matchedSweepRule, matchedStreams }: EmailCardProps) {
   const openContextMenu = useStore(s => s.openContextMenu);
   const selectEmail = useStore(s => s.selectEmail);
   const account = accounts.find(a => a.id === email.accountId);
@@ -32,10 +33,11 @@ export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, 
   };
 
   const hasSweep = sweepSeconds != null && sweepSeconds > 0;
+  const hasSweepRule = hasSweep || !!matchedSweepRule;
 
   return (
     <motion.div
-      className={`email-card ${email.unread ? 'unread' : ''} ${email.starred ? 'starred' : ''}${isSelected ? ' selected' : ''}${hasSweep ? ' has-sweep' : ''}`}
+      className={`email-card ${email.unread ? 'unread' : ''} ${email.starred ? 'starred' : ''}${isSelected ? ' selected' : ''}${hasSweepRule ? ' has-sweep' : ''}`}
       style={{ '--column-accent': accent } as React.CSSProperties}
       layout
       initial={{ opacity: 0, y: -8 }}
@@ -57,6 +59,14 @@ export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, 
           <span className={`email-sweep-badge ${getCountdownClass(sweepSeconds)}`}>
             <Icons.Clock />
             {sweepAction === 'delete' ? 'Delete' : 'Archive'} in {formatCountdown(sweepSeconds)}
+          </span>
+        </div>
+      )}
+      {!hasSweep && matchedSweepRule && (
+        <div className="email-card-sweep-row">
+          <span className="email-sweep-badge rule-matched">
+            <Icons.Sweep />
+            {matchedSweepRule.action === 'delete' || matchedSweepRule.action === 'keep_newest_delete' ? 'Delete' : 'Archive'} (sweep rule)
           </span>
         </div>
       )}
