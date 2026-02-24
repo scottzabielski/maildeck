@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useRef, useLayoutEffect } from 'react';
+import { useMemo, useCallback, useRef, useLayoutEffect, useEffect } from 'react';
 import { motion, AnimatePresence, type DragControls } from 'framer-motion';
 import { Icons } from './ui/Icons.tsx';
 import { EmailCard } from './EmailCard.tsx';
@@ -43,6 +43,16 @@ export function Column({ column, dragControls }: ColumnProps) {
       scrollRef.current.scrollTop = saved;
     }
   }, [column.id]);
+
+  // Auto-fetch more pages if the column isn't scrollable (filtered view shows few emails)
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !_hasNextPage || _isFetchingNextPage) return;
+    // If content doesn't fill the container, fetch more
+    if (el.scrollHeight <= el.clientHeight) {
+      _fetchNextPage?.();
+    }
+  }, [columnEmails.length, _hasNextPage, _isFetchingNextPage, _fetchNextPage]);
 
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
