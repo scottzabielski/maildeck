@@ -67,11 +67,11 @@ export function Column({ column, dragControls }: ColumnProps) {
     }
   }, [column.id]);
 
-  // Auto-fetch more pages if the column isn't scrollable (filtered view shows few emails).
-  // Uses an interval to keep checking since each page load may not add enough filtered matches.
+  // Auto-fetch more pages if the column isn't scrollable.
+  // Skip when a filter is active — fetching more pages won't help since the filter hides them.
   useEffect(() => {
     const el = scrollRef.current;
-    if (!el || !_hasNextPage || !_fetchNextPage) return;
+    if (!el || !_hasNextPage || !_fetchNextPage || globalStreamNoSweep || searchQuery) return;
     const check = () => {
       if (_isFetchingNextPage) return;
       const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 200;
@@ -82,7 +82,7 @@ export function Column({ column, dragControls }: ColumnProps) {
     check();
     const id = setInterval(check, 300);
     return () => clearInterval(id);
-  }, [_hasNextPage, _isFetchingNextPage, _fetchNextPage]);
+  }, [_hasNextPage, _isFetchingNextPage, _fetchNextPage, globalStreamNoSweep, searchQuery]);
 
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
@@ -126,7 +126,7 @@ export function Column({ column, dragControls }: ColumnProps) {
             />
           ))}
         </AnimatePresence>
-        {_isFetchingNextPage && <div className="column-load-more" />}
+        {_isFetchingNextPage && !globalStreamNoSweep && !searchQuery && <div className="column-load-more" />}
       </div>
     </motion.div>
   );
