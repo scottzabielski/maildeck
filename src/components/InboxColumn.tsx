@@ -115,10 +115,14 @@ export function InboxColumn({ accountId }: InboxColumnProps) {
   useEffect(() => {
     const el = scrollRef.current;
     if (!el || !_hasNextPage || _isFetchingNextPage) return;
-    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 200;
-    if (el.scrollHeight <= el.clientHeight || atBottom) {
-      _fetchNextPage?.();
-    }
+    // Wait for DOM to settle after render, then check if we need more content
+    const timer = setTimeout(() => {
+      const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 200;
+      if (el.scrollHeight <= el.clientHeight + 10 || atBottom) {
+        _fetchNextPage?.();
+      }
+    }, 100);
+    return () => clearTimeout(timer);
   }, [emails.length, displayEmails.length, _hasNextPage, _isFetchingNextPage, _fetchNextPage]);
 
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {

@@ -49,11 +49,13 @@ export function Column({ column, dragControls }: ColumnProps) {
   useEffect(() => {
     const el = scrollRef.current;
     if (!el || !_hasNextPage || _isFetchingNextPage) return;
-    // If content doesn't fill the container or user is at the bottom, fetch more
-    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 200;
-    if (el.scrollHeight <= el.clientHeight || atBottom) {
-      _fetchNextPage?.();
-    }
+    const timer = setTimeout(() => {
+      const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 200;
+      if (el.scrollHeight <= el.clientHeight + 10 || atBottom) {
+        _fetchNextPage?.();
+      }
+    }, 100);
+    return () => clearTimeout(timer);
   }, [emails.length, columnEmails.length, _hasNextPage, _isFetchingNextPage, _fetchNextPage]);
 
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
