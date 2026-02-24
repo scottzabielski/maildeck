@@ -219,49 +219,47 @@ export function useSyncStore() {
     }
   }, [dbSweepRules, emailsFetched, userId]);
 
-  // Detect newly arrived emails and evaluate ALL enabled sweep rules server-side
+  // Detect genuinely new emails (from sync/realtime) and evaluate sweep rules server-side.
+  // Only watches the first page of the infinite query — pagination pages are historical
+  // data already covered by the hydration effect.
+  const firstPage = dbEmailPages?.pages?.[0];
   useEffect(() => {
-    if (useMockData) return;
-    const { emails, sweepRules } = useStore.getState();
-    const currentIds = new Set(emails.map(e => e.id));
+    if (useMockData || !firstPage || !userId) return;
+    const firstPageIds = new Set(firstPage.map(e => e.id));
 
     // On first render, just capture the baseline
     if (prevEmailIdsRef.current === null) {
-      prevEmailIdsRef.current = currentIds;
+      prevEmailIdsRef.current = firstPageIds;
       return;
     }
 
-    // Find truly new email IDs
-    const newIds = [...currentIds].filter(id => !prevEmailIdsRef.current!.has(id));
-    prevEmailIdsRef.current = currentIds;
+    // Find truly new email IDs (appeared in page 1 since last check)
+    const newIds = [...firstPageIds].filter(id => !prevEmailIdsRef.current!.has(id));
+    prevEmailIdsRef.current = firstPageIds;
 
     if (newIds.length === 0) return;
 
+    const { sweepRules } = useStore.getState();
     const enabledRules = sweepRules.filter(r => r.enabled);
     if (enabledRules.length === 0) return;
 
+    const { emails } = useStore.getState();
     const newEmails = emails.filter(e => newIds.includes(e.id));
 
     for (const rule of enabledRules) {
-      // Check if any of the new emails match this rule
       const newMatches = newEmails.filter(e => emailMatchesCriteria(e, rule.criteria, rule.criteriaLogic));
       if (newMatches.length === 0) continue;
 
-      // New matching email(s) arrived — apply server-side against the full DB
-      useStore.getState().applySweepAction(rule.criteria, rule.criteriaLogic, rule.action, rule.delayHours);
-
-      if (userId) {
-        applySweepRuleMutation.mutate({
-          ruleId: rule.id,
-          userId,
-          criteria: rule.criteria,
-          criteriaLogic: rule.criteriaLogic,
-          action: rule.action,
-          delayHours: rule.delayHours,
-        });
-      }
+      applySweepRuleMutation.mutate({
+        ruleId: rule.id,
+        userId,
+        criteria: rule.criteria,
+        criteriaLogic: rule.criteriaLogic,
+        action: rule.action,
+        delayHours: rule.delayHours,
+      });
     }
-  }, [dbEmailPages]); // Re-run when emails change
+  }, [firstPage, userId]);
 
   // Auto-trigger initial sync for newly connected accounts (staggered to avoid rate limits)
   useEffect(() => {
