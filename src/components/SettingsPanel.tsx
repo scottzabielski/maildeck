@@ -5,6 +5,7 @@ import { useStore } from '../store/index.ts';
 import { useAuth } from '../hooks/useAuth.ts';
 import { useDeleteSweepRule } from '../hooks/useSweepRules.ts';
 import { useDeleteColumn } from '../hooks/useColumns.ts';
+import { useDeleteEmailAccount } from '../hooks/useEmailAccounts.ts';
 import { ConnectAccountFlow } from './settings/ConnectAccountFlow.tsx';
 import type { Account, Column as ColumnType, Criterion, SweepRule } from '../types/index.ts';
 
@@ -32,6 +33,8 @@ const SETTINGS_SECTIONS = [
 // ========================================
 function SettingsAccountRow({ account }: { account: Account }) {
   const renameAccount = useStore(s => s.renameAccount);
+  const { user } = useAuth();
+  const deleteMutation = useDeleteEmailAccount();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(account.name);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -76,7 +79,18 @@ function SettingsAccountRow({ account }: { account: Account }) {
         <div className="settings-account-email">{account.email}</div>
       </div>
       <span className="settings-account-status">synced</span>
-      <button className="settings-account-remove">Remove</button>
+      <button
+        className="settings-account-remove"
+        onClick={() => {
+          if (!user?.id) return;
+          if (!confirm(`Remove ${account.email}? This will delete all synced emails for this account.`)) return;
+          deleteMutation.mutate({ id: account.id, userId: user.id });
+          useStore.setState(s => ({
+            accounts: s.accounts.filter(a => a.id !== account.id),
+            emails: s.emails.filter(e => e.accountId !== account.id),
+          }));
+        }}
+      >Remove</button>
     </>
   );
 }
