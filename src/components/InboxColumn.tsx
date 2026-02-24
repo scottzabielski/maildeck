@@ -111,6 +111,16 @@ export function InboxColumn({ accountId }: InboxColumnProps) {
     }
   }, [scrollKey]);
 
+  // Auto-fetch more pages if the column isn't scrollable (filter narrows results)
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !_hasNextPage || _isFetchingNextPage) return;
+    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 200;
+    if (el.scrollHeight <= el.clientHeight || atBottom) {
+      _fetchNextPage?.();
+    }
+  }, [emails.length, displayEmails.length, _hasNextPage, _isFetchingNextPage, _fetchNextPage]);
+
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
     scrollPositions.set(scrollKey, el.scrollTop);
