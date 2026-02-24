@@ -260,6 +260,7 @@ async function gmailIncrementalSync(
   let newHistoryId = historyId;
   const addedIds: string[] = [];
   const deletedIds: string[] = [];
+  const changedIds: string[] = []; // messages whose labels changed (moved to junk, archived, etc.)
   let pageToken: string | undefined;
 
   do {
@@ -282,15 +283,23 @@ async function gmailIncrementalSync(
         if (h.messagesDeleted) {
           deletedIds.push(...h.messagesDeleted.map((m: { message: { id: string } }) => m.message.id));
         }
+        // Label changes: email moved to/from Inbox, Spam, Trash, etc.
+        if (h.labelsAdded) {
+          changedIds.push(...h.labelsAdded.map((m: { message: { id: string } }) => m.message.id));
+        }
+        if (h.labelsRemoved) {
+          changedIds.push(...h.labelsRemoved.map((m: { message: { id: string } }) => m.message.id));
+        }
       }
     }
 
     pageToken = data.nextPageToken;
   } while (pageToken);
 
-  // Fetch and upsert added messages
+  // Merge added + label-changed IDs (re-fetch to get current labels)
   let synced = 0;
-  const uniqueAdded = [...new Set(addedIds)];
+  const deletedSet = new Set(deletedIds);
+  const uniqueAdded = [...new Set([...addedIds, ...changedIds])].filter(id => !deletedSet.has(id));
 
   for (let i = 0; i < uniqueAdded.length; i += 20) {
     const batch = uniqueAdded.slice(i, i + 20);
@@ -380,6 +389,12 @@ async function gmailFetch(accessToken: string, path: string): Promise<Response> 
 // Outlook sync
 // ============================================================
 
+async function resolveOutlookInboxFolderId(accessToken: string): Promise<string> {
+  const res = await outlookFetch(accessToken, 'https://graph.microsoft.com/v1.0/me/mailFolders/Inbox?$select=id');
+  const data = await res.json();
+  return data.id as string;
+}
+
 async function outlookFullSync(
   supabase: ReturnType<typeof createAdminClient>,
   account: Record<string, unknown>,
@@ -389,9 +404,10 @@ async function outlookFullSync(
   const accountId = account.id as string;
   const startTime = Date.now();
   const TIME_BUDGET_MS = 50_000;
+  const inboxFolderId = await resolveOutlookInboxFolderId(accessToken);
 
   let synced = 0;
-  let url: string | null = `https://graph.microsoft.com/v1.0/me/messages?$top=100&$orderby=receivedDateTime desc&$select=id,conversationId,from,toRecipients,subject,bodyPreview,receivedDateTime,isRead,flag,categories,parentFolderId`;
+  let url: string | null = `https://graph.microsoft.com/v1.0/me/mailFolders/Inbox/messages?$top=100&$orderby=receivedDateTime desc&$select=id,conversationId,from,toRecipients,subject,bodyPreview,receivedDateTime,isRead,flag,categories,parentFolderId`;
   let timedOut = false;
 
   while (url) {
@@ -406,7 +422,7 @@ async function outlookFullSync(
 
     if (data.value) {
       const rows = data.value.map((msg: Record<string, unknown>) =>
-        outlookMessageToRow(msg, userId, accountId),
+        outlookMessageToRow(msg, userId, accountId, inboxFolderId),
       );
       const { error } = await supabase
         .from('emails')
@@ -421,7 +437,7 @@ async function outlookFullSync(
 
   // Only get deltaLink when all messages have been fetched (no timeout)
   if (!timedOut) {
-    const deltaUrl = `https://graph.microsoft.com/v1.0/me/messages/delta?$select=id,conversationId,from,toRecipients,subject,bodyPreview,receivedDateTime,isRead,flag,categories,parentFolderId`;
+    const deltaUrl = `https://graph.microsoft.com/v1.0/me/mailFolders/Inbox/messages/delta?$select=id,conversationId,from,toRecipients,subject,bodyPreview,receivedDateTime,isRead,flag,categories,parentFolderId`;
     let deltaLink: string | null = null;
     let deltaNextUrl: string | null = deltaUrl;
 
@@ -457,6 +473,7 @@ async function outlookIncrementalSync(
   const userId = account.user_id as string;
   const accountId = account.id as string;
   const deltaLink = account.sync_delta_link as string;
+  const inboxFolderId = await resolveOutlookInboxFolderId(accessToken);
 
   let synced = 0;
   let url: string | null = deltaLink;
@@ -472,7 +489,7 @@ async function outlookIncrementalSync(
 
       if (added.length > 0) {
         const rows = added.map((msg: Record<string, unknown>) =>
-          outlookMessageToRow(msg, userId, accountId),
+          outlookMessageToRow(msg, userId, accountId, inboxFolderId),
         );
         await supabase
           .from('emails')
@@ -510,14 +527,15 @@ function outlookMessageToRow(
   msg: Record<string, unknown>,
   userId: string,
   accountId: string,
+  inboxFolderId: string,
 ) {
   const from = msg.from as { emailAddress: { name: string; address: string } } | undefined;
   const toRecipients = msg.toRecipients as Array<{ emailAddress: { name: string; address: string } }> | undefined;
   const flag = msg.flag as { flagStatus: string } | undefined;
 
-  // Determine if archived (not in Inbox folder)
-  // The Inbox folder ID varies per user, but deletedItems contains "deleteditems"
   const parentFolderId = (msg.parentFolderId as string) || '';
+  const isInInbox = parentFolderId === inboxFolderId;
+  const isInDeletedItems = parentFolderId.toLowerCase().includes('deleteditems');
 
   return {
     user_id: userId,
@@ -531,8 +549,8 @@ function outlookMessageToRow(
     received_at: msg.receivedDateTime as string,
     is_unread: !(msg.isRead as boolean),
     is_starred: flag?.flagStatus === 'flagged',
-    is_archived: false, // Will be determined by folder-based logic
-    is_deleted: parentFolderId.toLowerCase().includes('deleteditems'),
+    is_archived: !isInInbox && !isInDeletedItems,
+    is_deleted: isInDeletedItems,
     labels: JSON.stringify(msg.categories || []),
     recipients: JSON.stringify(
       (toRecipients || []).map((r) => ({

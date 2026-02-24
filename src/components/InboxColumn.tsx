@@ -6,7 +6,7 @@ import { useStore } from '../store/index.ts';
 import { emailMatchesCriteria } from '../lib/emailFilter.ts';
 import { scrollPositions, filterModes } from '../lib/scrollPositions.ts';
 
-type FilterMode = 'none' | 'no-stream' | 'no-sweep' | 'neither';
+type FilterMode = 'none' | 'off' | 'no-stream' | 'no-sweep' | 'neither';
 
 interface InboxColumnProps {
   accountId: string | null;
@@ -69,6 +69,24 @@ export function InboxColumn({ accountId }: InboxColumnProps) {
     [sweepRules]
   );
 
+  // Match each displayed email against enabled sweep rules → { action } for the soonest rule
+  const sweepRuleMatchLookup = useMemo(() => {
+    const map = new Map<string, { action: string }>();
+    if (enabledSweepRules.length === 0) return map;
+    for (const email of columnEmails) {
+      let bestRule: { action: string; delayHours: number } | null = null;
+      for (const rule of enabledSweepRules) {
+        if (emailMatchesCriteria(email, rule.criteria, rule.criteriaLogic)) {
+          if (!bestRule || rule.delayHours < bestRule.delayHours) {
+            bestRule = { action: rule.action, delayHours: rule.delayHours };
+          }
+        }
+      }
+      if (bestRule) map.set(email.id, { action: bestRule.action });
+    }
+    return map;
+  }, [columnEmails, enabledSweepRules]);
+
   const matchedStreamsMap = useMemo(() => {
     const map = new Map<string, Array<{ id: string; accent: string }>>();
     for (const email of columnEmails) {
@@ -85,8 +103,8 @@ export function InboxColumn({ accountId }: InboxColumnProps) {
     return map;
   }, [columnEmails, enabledStreams]);
 
-  // Per-column filter overrides global; if local is 'none', fall back to global
-  const effectiveFilter = filterMode !== 'none' ? filterMode : globalInboxFilter;
+  // Per-column filter overrides global; 'none' = use global, 'off' = explicitly no filter
+  const effectiveFilter = filterMode === 'none' ? globalInboxFilter : filterMode === 'off' ? 'none' : filterMode;
 
   const displayEmails = useMemo(() => {
     if (effectiveFilter === 'none') return columnEmails;
@@ -153,8 +171,13 @@ export function InboxColumn({ accountId }: InboxColumnProps) {
       setFilterMenuOpen(false);
       return;
     }
-    setFilterMode(prev => prev === 'none' ? 'neither' : 'none');
-  }, [filterMenuOpen]);
+    setFilterMode(prev => {
+      if (prev === 'off') return 'none';               // opt back into global
+      if (prev !== 'none') return 'none';               // clear local override
+      if (globalInboxFilter !== 'none') return 'off';   // opt out of global
+      return 'neither';                                 // no global → toggle on
+    });
+  }, [filterMenuOpen, globalInboxFilter]);
 
   const handleFilterMouseDown = useCallback(() => {
     longPressTimer.current = setTimeout(() => {
@@ -266,6 +289,7 @@ export function InboxColumn({ accountId }: InboxColumnProps) {
               selectedEmailId={selectedEmailId}
               sweepSeconds={sweepLookup.get(email.id)?.seconds}
               sweepAction={sweepLookup.get(email.id)?.action}
+              matchedSweepRule={sweepRuleMatchLookup.get(email.id)}
               matchedStreams={matchedStreamsMap.get(email.id)}
             />
           ))}
