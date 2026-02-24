@@ -106,26 +106,39 @@ export function useSyncStore() {
   useEffect(() => {
     if (useMockData || !dbEmailPages) return;
     const allDbEmails = dbEmailPages.pages.flat();
-    const mapped: Email[] = allDbEmails.map(e => {
-      const firstRecipient = Array.isArray(e.recipients) && e.recipients.length > 0
-        ? e.recipients[0].email
-        : undefined;
-      return {
-        id: e.id,
-        columnId: '', // No hardcoded columnId — columns use criteria matching
-        accountId: e.account_id,
-        sender: e.sender_name || e.sender_email || '',
-        senderEmail: e.sender_email || '',
-        toEmail: firstRecipient,
-        subject: e.subject,
-        snippet: e.snippet,
-        time: new Date(e.received_at).getTime(),
-        unread: e.is_unread,
-        starred: e.is_starred,
-        labels: e.labels,
-      };
-    });
-    useStore.setState({ emails: mapped });
+    const pendingRemovals = useStore.getState()._pendingRemovals;
+    const serverIds = new Set(allDbEmails.map(e => e.id));
+    const mapped: Email[] = allDbEmails
+      .filter(e => !pendingRemovals.has(e.id))
+      .map(e => {
+        const firstRecipient = Array.isArray(e.recipients) && e.recipients.length > 0
+          ? e.recipients[0].email
+          : undefined;
+        return {
+          id: e.id,
+          columnId: '', // No hardcoded columnId — columns use criteria matching
+          accountId: e.account_id,
+          sender: e.sender_name || e.sender_email || '',
+          senderEmail: e.sender_email || '',
+          toEmail: firstRecipient,
+          subject: e.subject,
+          snippet: e.snippet,
+          time: new Date(e.received_at).getTime(),
+          unread: e.is_unread,
+          starred: e.is_starred,
+          labels: e.labels,
+        };
+      });
+    // Clear pending removals that the server has confirmed (no longer in results)
+    if (pendingRemovals.size > 0) {
+      const confirmed = new Set(pendingRemovals);
+      for (const id of confirmed) {
+        if (!serverIds.has(id)) confirmed.delete(id);
+      }
+      useStore.setState({ emails: mapped, _pendingRemovals: confirmed });
+    } else {
+      useStore.setState({ emails: mapped });
+    }
   }, [dbEmailPages]);
 
   // Sync pagination state → store

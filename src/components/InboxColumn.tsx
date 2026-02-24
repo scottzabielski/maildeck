@@ -2,13 +2,14 @@ import { useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { EmailCard } from './EmailCard.tsx';
 import { useStore } from '../store/index.ts';
+import { emailMatchesCriteria } from '../lib/emailFilter.ts';
 
 interface InboxColumnProps {
   accountId: string | null;
 }
 
 export function InboxColumn({ accountId }: InboxColumnProps) {
-  const { emails, accounts, disabledAccountIds, selectedEmail, sweepEmails, _fetchNextPage, _hasNextPage, _isFetchingNextPage } = useStore();
+  const { emails, accounts, disabledAccountIds, selectedEmail, sweepEmails, columns, _fetchNextPage, _hasNextPage, _isFetchingNextPage } = useStore();
   const selectedEmailId = selectedEmail ? selectedEmail.emailId : null;
 
   const columnEmails = useMemo(() => {
@@ -28,6 +29,27 @@ export function InboxColumn({ accountId }: InboxColumnProps) {
     }
     return map;
   }, [sweepEmails]);
+
+  const enabledStreams = useMemo(
+    () => columns.filter(c => c.enabled !== false && c.criteria.length > 0),
+    [columns]
+  );
+
+  const matchedStreamsMap = useMemo(() => {
+    const map = new Map<string, Array<{ id: string; accent: string }>>();
+    for (const email of columnEmails) {
+      const matched: Array<{ id: string; accent: string }> = [];
+      for (const col of enabledStreams) {
+        if (emailMatchesCriteria(email, col.criteria, col.criteriaLogic)) {
+          matched.push({ id: col.id, accent: col.accent });
+        }
+      }
+      if (matched.length > 0) {
+        map.set(email.id, matched);
+      }
+    }
+    return map;
+  }, [columnEmails, enabledStreams]);
 
   const account = accountId ? accounts.find(a => a.id === accountId) : null;
   const accent = account ? account.color : '#3b82f6';
@@ -53,7 +75,7 @@ export function InboxColumn({ accountId }: InboxColumnProps) {
       layout
       transition={{ layout: { duration: 0.4, ease: [0.4, 0, 0.2, 1] } }}
     >
-      <div className="column-header" style={{ borderTopColor: accent }}>
+      <div className="column-header" style={{ borderTopColor: 'transparent' }}>
         <span className="column-icon">{icon}</span>
         <span className="column-name">
           {name}
@@ -78,6 +100,7 @@ export function InboxColumn({ accountId }: InboxColumnProps) {
               selectedEmailId={selectedEmailId}
               sweepSeconds={sweepLookup.get(email.id)?.seconds}
               sweepAction={sweepLookup.get(email.id)?.action}
+              matchedStreams={matchedStreamsMap.get(email.id)}
             />
           ))}
         </AnimatePresence>

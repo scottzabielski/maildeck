@@ -289,7 +289,7 @@ button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
-  background: var(--bg-raised);
+  background: var(--bg-surface);
   position: relative;
 }
 
@@ -392,30 +392,8 @@ button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
   background: rgba(37, 99, 235, 0.04);
 }
 
-.email-card.unread::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 8px;
-  bottom: 8px;
-  width: 2px;
-  border-radius: 1px;
-  background: var(--column-accent, var(--blue));
-}
-
 .email-card.has-sweep {
   background: rgba(220, 38, 38, 0.04);
-}
-
-.email-card.has-sweep::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 8px;
-  bottom: 8px;
-  width: 2px;
-  border-radius: 1px;
-  background: #dc2626;
 }
 
 .email-card-top {
@@ -755,6 +733,21 @@ button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
   font-size: 13px;
   line-height: 1;
   margin-left: 2px;
+}
+
+/* Stream indicator lines (left side of email card) */
+.email-stream-indicators {
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  display: flex;
+  gap: 2px;
+}
+
+.email-stream-indicator {
+  width: 2px;
+  border-radius: 1px;
 }
 
 /* ========================================

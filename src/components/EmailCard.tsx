@@ -13,9 +13,10 @@ interface EmailCardProps {
   selectedEmailId: string | null;
   sweepSeconds?: number;
   sweepAction?: string;
+  matchedStreams?: Array<{ id: string; accent: string }>;
 }
 
-export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, selectedEmailId, sweepSeconds, sweepAction }: EmailCardProps) {
+export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, selectedEmailId, sweepSeconds, sweepAction, matchedStreams }: EmailCardProps) {
   const openContextMenu = useStore(s => s.openContextMenu);
   const selectEmail = useStore(s => s.selectEmail);
   const account = accounts.find(a => a.id === email.accountId);
@@ -47,7 +48,6 @@ export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, 
       <div className="email-card-top">
         <span className="email-sender">{email.sender}</span>
         {email.starred && <span className="star-indicator">{'\u2605'}</span>}
-        {account && <span className="email-account-dot" style={{ background: account.color }} />}
         <span className="email-time">{formatTime(email.time)}</span>
       </div>
       <div className="email-subject">{email.subject}</div>
@@ -58,6 +58,13 @@ export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, 
             <Icons.Clock />
             {sweepAction === 'delete' ? 'Delete' : 'Archive'} in {formatCountdown(sweepSeconds)}
           </span>
+        </div>
+      )}
+      {matchedStreams && matchedStreams.length > 0 && (
+        <div className="email-stream-indicators">
+          {matchedStreams.map(s => (
+            <div key={s.id} className="email-stream-indicator" style={{ background: s.accent }} />
+          ))}
         </div>
       )}
     </motion.div>

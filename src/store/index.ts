@@ -167,6 +167,7 @@ export interface StoreState {
   sweepRuleEditor: SweepRuleEditorState | null;
   streamEditorPrefill: StreamEditorPrefill | null;
   selectedEmail: SelectedEmailState | null;
+  _pendingRemovals: Set<string>;
 
   setActiveView: (viewId: string) => void;
   setTheme: (theme: string) => void;
@@ -254,6 +255,7 @@ export const useStore = create<StoreState>((set, get) => ({
   sweepRuleEditor: null,
   streamEditorPrefill: null,
   selectedEmail: null,
+  _pendingRemovals: new Set<string>(),
 
   setActiveView: (viewId) => set({ activeViewId: viewId, selectedEmail: null }),
   setTheme: (theme) => {
@@ -350,10 +352,13 @@ export const useStore = create<StoreState>((set, get) => ({
     if (email.unread) {
       fireEmailAction(emailId, 'mark_read');
     }
+    const removals = new Set(get()._pendingRemovals);
+    removals.add(emailId);
     set(s => ({
       emails: s.emails.filter(e => e.id !== emailId),
       undoAction: { type: 'archive', email: { ...email, unread: false }, timestamp: Date.now() },
       selectedEmail: sel && sel.emailId === emailId ? null : s.selectedEmail,
+      _pendingRemovals: removals,
     }));
     fireEmailAction(emailId, 'archive');
   },
@@ -362,10 +367,13 @@ export const useStore = create<StoreState>((set, get) => ({
     const email = get().emails.find(e => e.id === emailId);
     if (!email) return;
     const sel = get().selectedEmail;
+    const removals = new Set(get()._pendingRemovals);
+    removals.add(emailId);
     set(s => ({
       emails: s.emails.filter(e => e.id !== emailId),
       undoAction: { type: 'delete', email, timestamp: Date.now() },
       selectedEmail: sel && sel.emailId === emailId ? null : s.selectedEmail,
+      _pendingRemovals: removals,
     }));
     fireEmailAction(emailId, 'delete');
   },
@@ -398,15 +406,21 @@ export const useStore = create<StoreState>((set, get) => ({
         undoAction: null,
       }));
     } else if (action.type === 'archive') {
+      const removals = new Set(get()._pendingRemovals);
+      removals.delete(action.email.id);
       set(s => ({
         emails: [action.email as Email, ...s.emails],
         undoAction: null,
+        _pendingRemovals: removals,
       }));
       fireEmailAction(action.email.id, 'unarchive');
     } else if (action.type === 'delete') {
+      const removals = new Set(get()._pendingRemovals);
+      removals.delete(action.email.id);
       set(s => ({
         emails: [action.email as Email, ...s.emails],
         undoAction: null,
+        _pendingRemovals: removals,
       }));
       // Note: undelete is not straightforward with providers, so we unarchive
       fireEmailAction(action.email.id, 'unarchive');
