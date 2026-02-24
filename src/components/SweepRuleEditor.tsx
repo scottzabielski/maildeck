@@ -217,7 +217,7 @@ export function SweepRuleEditor() {
                   >
                     <option value="">Select stream...</option>
                     {columns.map(col => (
-                      <option key={col.id} value={col.id}>{col.icon} {col.name}</option>
+                      <option key={col.id} value={col.id}>{col.name}</option>
                     ))}
                   </select>
                 ) : (

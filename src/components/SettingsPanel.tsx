@@ -163,7 +163,7 @@ function SettingsColumns({ columns }: { columns: ColumnType[] }) {
             whileDrag={{ scale: 1.01, boxShadow: '0 4px 16px rgba(0,0,0,0.2)', zIndex: 10 }}
           >
             <span className="drag-handle-wrap"><Icons.DragHandle /></span>
-            <span style={{ fontSize: '15px', width: '20px', textAlign: 'center' }}>{col.icon}</span>
+            <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: col.accent, flexShrink: 0 }} />
             <div
               style={{ flex: 1, cursor: 'pointer' }}
               onClick={() => openCriteriaEditor(col.id)}
@@ -173,7 +173,6 @@ function SettingsColumns({ columns }: { columns: ColumnType[] }) {
                 {formatColumnCriteriaSummary(col.criteria, col.criteriaLogic)}
               </div>
             </div>
-            <span style={{ width: '10px', height: '10px', borderRadius: '2px', background: col.accent }} />
             <button
               className={`sweep-rule-toggle ${col.enabled !== false ? 'active' : ''}`}
               onClick={() => toggleColumn(col.id)}

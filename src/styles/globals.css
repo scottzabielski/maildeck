@@ -836,6 +836,14 @@ button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
   background: rgba(37, 99, 235, 0.1);
 }
 
+.column-accent-preview {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  align-self: center;
+}
+
 .column-name-input {
   flex: 1;
   font-family: var(--font-display);

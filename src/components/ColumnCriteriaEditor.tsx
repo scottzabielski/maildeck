@@ -8,8 +8,6 @@ const ACCENT_COLORS = [
   '#06b6d4', '#ec4899', '#8b5cf6', '#f59e0b', '#10b981',
 ];
 
-const ICONS = ['📬', '🔔', '👥', '💼', '📝', '🏷️', '⭐', '🚀', '🛡️', '💡', '📊', '🎯'];
-
 export function ColumnCriteriaEditor() {
   const { editingColumnId, creatingColumn, columns, closeCriteriaEditor, updateColumn, addColumn } = useStore();
   const column = editingColumnId ? columns.find(c => c.id === editingColumnId) : null;
@@ -18,7 +16,6 @@ export function ColumnCriteriaEditor() {
   const [criteria, setCriteria] = useState<Criterion[]>([]);
   const [logic, setLogic] = useState<'and' | 'or'>('and');
   const [name, setName] = useState('');
-  const [icon, setIcon] = useState('📬');
   const [accent, setAccent] = useState('#7c3aed');
   const nameInputRef = useRef<HTMLInputElement>(null);
 
@@ -27,13 +24,11 @@ export function ColumnCriteriaEditor() {
       setCriteria(column.criteria || []);
       setLogic(column.criteriaLogic || 'and');
       setName(column.name);
-      setIcon(column.icon);
       setAccent(column.accent);
     } else if (isCreating) {
       setCriteria([{ field: 'from', op: 'contains', value: '' }]);
       setLogic('and');
       setName('');
-      setIcon('📬');
       setAccent(ACCENT_COLORS[Math.floor(Math.random() * ACCENT_COLORS.length)]);
       setTimeout(() => nameInputRef.current?.focus(), 50);
     }
@@ -56,9 +51,9 @@ export function ColumnCriteriaEditor() {
     const validCriteria = criteria.filter(c => c.value.trim());
     if (isCreating) {
       if (!name.trim()) return;
-      addColumn({ name: name.trim(), icon, accent, criteria: validCriteria, criteriaLogic: logic, enabled: true });
+      addColumn({ name: name.trim(), icon: '', accent, criteria: validCriteria, criteriaLogic: logic, enabled: true });
     } else if (column) {
-      updateColumn(column.id, { name: name.trim() || column.name, icon, accent, criteria: validCriteria, criteriaLogic: logic });
+      updateColumn(column.id, { name: name.trim() || column.name, icon: column.icon, accent, criteria: validCriteria, criteriaLogic: logic });
     }
     closeCriteriaEditor();
   };
@@ -70,7 +65,7 @@ export function ColumnCriteriaEditor() {
       <div className="criteria-editor">
         <div className="criteria-header">
           <span className="criteria-title">
-            {isCreating ? 'New Stream' : `${column!.icon} ${column!.name} — Filters`}
+            {isCreating ? 'New Stream' : `${column!.name} — Filters`}
           </span>
           <button className="criteria-close" onClick={closeCriteriaEditor}>
             <Icons.Close />
@@ -81,30 +76,7 @@ export function ColumnCriteriaEditor() {
           {(isCreating || column) && (
             <div className="column-identity-section">
               <div className="column-identity-row">
-                <div className="column-icon-picker">
-                  {ICONS.map(ic => (
-                    <button
-                      key={ic}
-                      className={`column-icon-option ${icon === ic ? 'selected' : ''}`}
-                      onClick={() => setIcon(ic)}
-                    >
-                      {ic}
-                    </button>
-                  ))}
-                  <input
-                    className="column-icon-custom"
-                    value={ICONS.includes(icon) ? '' : icon}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      // Take only the last grapheme cluster (emoji) entered
-                      const segments = [...new Intl.Segmenter().segment(val)];
-                      if (segments.length > 0) setIcon(segments[segments.length - 1].segment);
-                    }}
-                    placeholder="✏️"
-                    title="Type any emoji"
-                    maxLength={4}
-                  />
-                </div>
+                <span className="column-accent-preview" style={{ background: accent }} />
                 <input
                   ref={nameInputRef}
                   className="column-name-input"
@@ -190,7 +162,7 @@ export function ColumnCriteriaEditor() {
                   >
                     <option value="">Select stream...</option>
                     {otherColumns.map(col => (
-                      <option key={col.id} value={col.id}>{col.icon} {col.name}</option>
+                      <option key={col.id} value={col.id}>{col.name}</option>
                     ))}
                   </select>
                 ) : (

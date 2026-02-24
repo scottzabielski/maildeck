@@ -43,7 +43,7 @@ export function Column({ column }: ColumnProps) {
     >
       <div className="column-header" style={{ borderTopColor: column.accent }}>
         <span className="column-drag-handle"><Icons.DragHandle /></span>
-        <span className="column-icon">{column.icon}</span>
+        <span className="column-icon" style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: column.accent }} />
         <span className="column-name">{column.name}</span>
         <span className="column-count">{unreadCount > 0 ? unreadCount : columnEmails.length}</span>
         <button
