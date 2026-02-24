@@ -1,5 +1,7 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase.ts';
+
+const PAGE_SIZE = 100;
 
 export interface DbEmail {
   id: string;
@@ -23,25 +25,39 @@ export interface DbEmail {
 }
 
 /**
- * Fetch all non-archived, non-deleted emails for a user.
+ * Fetch non-archived, non-deleted emails with cursor-based pagination.
  */
 export function useEmails(userId: string | undefined) {
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: ['emails', userId],
-    queryFn: async () => {
+    queryFn: async ({ pageParam }: { pageParam: string | undefined }) => {
       if (!supabase || !userId) return [];
-      const { data, error } = await supabase
+      let query = supabase
         .from('emails')
         .select('id, user_id, account_id, provider_message_id, thread_id, sender_name, sender_email, recipients, subject, snippet, received_at, is_unread, is_starred, is_archived, is_deleted, labels')
         .eq('user_id', userId)
         .eq('is_archived', false)
         .eq('is_deleted', false)
-        .order('received_at', { ascending: false });
+        .order('received_at', { ascending: false })
+        .limit(PAGE_SIZE);
+      if (pageParam) {
+        query = query.lt('received_at', pageParam);
+      }
+      const { data, error } = await query;
       if (error) throw error;
-      return data as DbEmail[];
+      return (data ?? []) as DbEmail[];
+    },
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => {
+      if (lastPage.length < PAGE_SIZE) return undefined;
+      return lastPage[lastPage.length - 1].received_at;
     },
     enabled: !!supabase && !!userId,
-    refetchInterval: 30000, // Refresh every 30 seconds for new emails
+    refetchInterval: (query) => {
+      // Only auto-refetch the first page
+      const pageCount = query.state.data?.pages?.length ?? 0;
+      return pageCount <= 1 ? 30000 : false;
+    },
   });
 }
 

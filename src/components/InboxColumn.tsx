@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { EmailCard } from './EmailCard.tsx';
 import { useStore } from '../store/index.ts';
@@ -8,7 +8,7 @@ interface InboxColumnProps {
 }
 
 export function InboxColumn({ accountId }: InboxColumnProps) {
-  const { emails, accounts, disabledAccountIds, selectedEmail, sweepEmails } = useStore();
+  const { emails, accounts, disabledAccountIds, selectedEmail, sweepEmails, _fetchNextPage, _hasNextPage, _isFetchingNextPage } = useStore();
   const selectedEmailId = selectedEmail ? selectedEmail.emailId : null;
 
   const columnEmails = useMemo(() => {
@@ -38,6 +38,13 @@ export function InboxColumn({ accountId }: InboxColumnProps) {
   const unreadCount = columnEmails.filter(e => e.unread).length;
   const layoutKey = accountId ? 'inbox-' + accountId : 'inbox-all';
 
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 200) {
+      if (_hasNextPage && !_isFetchingNextPage) _fetchNextPage?.();
+    }
+  }, [_fetchNextPage, _hasNextPage, _isFetchingNextPage]);
+
   return (
     <motion.div
       className="column"
@@ -58,7 +65,7 @@ export function InboxColumn({ accountId }: InboxColumnProps) {
         </span>
         <span className="column-count">{unreadCount > 0 ? unreadCount : columnEmails.length}</span>
       </div>
-      <div className="column-emails">
+      <div className="column-emails" onScroll={handleScroll}>
         <AnimatePresence initial={false}>
           {columnEmails.map(email => (
             <EmailCard
@@ -74,6 +81,7 @@ export function InboxColumn({ accountId }: InboxColumnProps) {
             />
           ))}
         </AnimatePresence>
+        {_isFetchingNextPage && <div className="column-load-more" />}
       </div>
     </motion.div>
   );

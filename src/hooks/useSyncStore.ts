@@ -26,7 +26,7 @@ export function useSyncStore() {
   const { data: dbColumns, isFetched: columnsFetched } = useColumns(useMockData ? undefined : userId);
   const { data: dbSweepRules } = useSweepRules(useMockData ? undefined : userId);
   const { data: dbAccounts, isFetched: accountsFetched } = useEmailAccounts(useMockData ? undefined : userId);
-  const { data: dbEmails, isFetched: emailsFetched } = useEmails(useMockData ? undefined : userId);
+  const { data: dbEmailPages, isFetched: emailsFetched, fetchNextPage, hasNextPage, isFetchingNextPage } = useEmails(useMockData ? undefined : userId);
   const { data: dbSweepQueue } = useSweepQueue(useMockData ? undefined : userId);
 
   const hydrated = useMockData || (accountsFetched && emailsFetched && columnsFetched);
@@ -102,10 +102,11 @@ export function useSyncStore() {
     useStore.setState({ accounts: mapped });
   }, [dbAccounts]);
 
-  // Sync emails → store
+  // Sync emails → store (flatten infinite query pages)
   useEffect(() => {
-    if (useMockData || !dbEmails) return;
-    const mapped: Email[] = dbEmails.map(e => {
+    if (useMockData || !dbEmailPages) return;
+    const allDbEmails = dbEmailPages.pages.flat();
+    const mapped: Email[] = allDbEmails.map(e => {
       const firstRecipient = Array.isArray(e.recipients) && e.recipients.length > 0
         ? e.recipients[0].email
         : undefined;
@@ -125,7 +126,17 @@ export function useSyncStore() {
       };
     });
     useStore.setState({ emails: mapped });
-  }, [dbEmails]);
+  }, [dbEmailPages]);
+
+  // Sync pagination state → store
+  useEffect(() => {
+    if (useMockData) return;
+    useStore.setState({
+      _fetchNextPage: hasNextPage ? () => fetchNextPage() : undefined,
+      _hasNextPage: hasNextPage,
+      _isFetchingNextPage: isFetchingNextPage,
+    });
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   // Sync sweep queue → store (as SweepEmail[])
   useEffect(() => {

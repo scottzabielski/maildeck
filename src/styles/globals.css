@@ -351,6 +351,26 @@ button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
   padding: 6px;
 }
 
+.column-load-more {
+  display: flex;
+  justify-content: center;
+  padding: 12px 0;
+}
+
+.column-load-more::after {
+  content: '';
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--border-medium);
+  border-top-color: var(--text-tertiary);
+  border-radius: 50%;
+  animation: column-spin 0.6s linear infinite;
+}
+
+@keyframes column-spin {
+  to { transform: rotate(360deg); }
+}
+
 /* ========================================
    EMAIL CARD
    ======================================== */
