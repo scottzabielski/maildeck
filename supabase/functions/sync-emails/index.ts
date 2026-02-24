@@ -34,18 +34,21 @@ Deno.serve(async (req) => {
     }
 
     // Sync all enabled accounts (for pg_cron polling)
+    // Include never_synced, syncing, error, and idle accounts
     const { data: accounts, error } = await supabase
       .from('email_accounts')
-      .select('id')
-      .eq('is_enabled', true)
-      .neq('sync_status', 'never_synced');
+      .select('id, sync_status')
+      .eq('is_enabled', true);
 
     if (error) throw error;
 
     const results = [];
     for (const acct of accounts || []) {
       try {
-        const result = await syncAccount(supabase, acct.id, 'incremental');
+        // Use full mode for accounts that haven't completed initial sync
+        const acctMode = (acct.sync_status === 'never_synced' || acct.sync_status === 'syncing' || acct.sync_status === 'error')
+          ? 'full' : 'incremental';
+        const result = await syncAccount(supabase, acct.id, acctMode);
         results.push(result);
       } catch (err) {
         results.push({ account_id: acct.id, status: 'error', error: (err as Error).message });
@@ -384,11 +387,20 @@ async function outlookFullSync(
 ): Promise<number> {
   const userId = account.user_id as string;
   const accountId = account.id as string;
+  const startTime = Date.now();
+  const TIME_BUDGET_MS = 50_000;
 
   let synced = 0;
   let url: string | null = `https://graph.microsoft.com/v1.0/me/messages?$top=100&$orderby=receivedDateTime desc&$select=id,conversationId,from,toRecipients,subject,bodyPreview,receivedDateTime,isRead,flag,categories,parentFolderId`;
+  let timedOut = false;
 
   while (url) {
+    if (Date.now() - startTime > TIME_BUDGET_MS) {
+      console.log(`Outlook full sync: time budget reached after syncing ${synced} messages`);
+      timedOut = true;
+      break;
+    }
+
     const res = await outlookFetch(accessToken, url);
     const data = await res.json();
 
@@ -407,25 +419,31 @@ async function outlookFullSync(
     url = data['@odata.nextLink'] || null;
   }
 
-  // Get deltaLink for incremental sync
-  const deltaUrl = `https://graph.microsoft.com/v1.0/me/messages/delta?$select=id,conversationId,from,toRecipients,subject,bodyPreview,receivedDateTime,isRead,flag,categories,parentFolderId`;
-  let deltaLink: string | null = null;
-  let deltaNextUrl: string | null = deltaUrl;
+  // Only get deltaLink when all messages have been fetched (no timeout)
+  if (!timedOut) {
+    const deltaUrl = `https://graph.microsoft.com/v1.0/me/messages/delta?$select=id,conversationId,from,toRecipients,subject,bodyPreview,receivedDateTime,isRead,flag,categories,parentFolderId`;
+    let deltaLink: string | null = null;
+    let deltaNextUrl: string | null = deltaUrl;
 
-  while (deltaNextUrl) {
-    const res = await outlookFetch(accessToken, deltaNextUrl);
-    const data = await res.json();
-    deltaNextUrl = data['@odata.nextLink'] || null;
-    if (data['@odata.deltaLink']) {
-      deltaLink = data['@odata.deltaLink'];
+    while (deltaNextUrl) {
+      if (Date.now() - startTime > TIME_BUDGET_MS) {
+        console.log('Outlook full sync: time budget reached during delta link fetch');
+        break;
+      }
+      const res = await outlookFetch(accessToken, deltaNextUrl);
+      const data = await res.json();
+      deltaNextUrl = data['@odata.nextLink'] || null;
+      if (data['@odata.deltaLink']) {
+        deltaLink = data['@odata.deltaLink'];
+      }
     }
-  }
 
-  if (deltaLink) {
-    await supabase
-      .from('email_accounts')
-      .update({ sync_delta_link: deltaLink })
-      .eq('id', accountId);
+    if (deltaLink) {
+      await supabase
+        .from('email_accounts')
+        .update({ sync_delta_link: deltaLink })
+        .eq('id', accountId);
+    }
   }
 
   return synced;
