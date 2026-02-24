@@ -58,8 +58,9 @@ function matchSingleCriterion(
       return matchOp(sender, op, v) || matchOp(senderEmail, op, v);
     }
     case 'to': {
-      // For mock data, we don't have recipients, so check accountId as a fallback
-      return matchOp((email.accountId || '').toLowerCase(), op, v);
+      const toEmail = (email.toEmail || '').toLowerCase();
+      const accountId = (email.accountId || '').toLowerCase();
+      return matchOp(toEmail, op, v) || matchOp(accountId, op, v);
     }
     case 'subject':
       return matchOp(email.subject.toLowerCase(), op, v);

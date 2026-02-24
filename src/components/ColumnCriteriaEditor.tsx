@@ -38,7 +38,7 @@ export function ColumnCriteriaEditor() {
       } else {
         setCriteria([{ field: 'from', op: 'contains', value: '' }]);
       }
-      setLogic('and');
+      setLogic('or');
       setName('');
       setAccent(ACCENT_COLORS[Math.floor(Math.random() * ACCENT_COLORS.length)]);
       setTimeout(() => nameInputRef.current?.focus(), 50);
