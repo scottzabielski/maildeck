@@ -112,7 +112,7 @@ const EMAILS: Email[] = [
 ];
 
 const SWEEP_EMAILS_INIT: SweepEmail[] = [
-  { id: 's1', accountId: 'szabielski', sender: 'LinkedIn', subject: 'Your weekly career update', sweepSeconds: 47, exempted: false },
+  { id: 's1', accountId: 'szabielski', sender: 'LinkedIn', subject: 'Your weekly career update', sweepSeconds: 10, exempted: false, action: 'delete' },
   { id: 's2', accountId: 'gs-gmail', sender: 'Uber Eats', subject: 'Craving something? 30% off today', sweepSeconds: 3 * 3600 + 1420, exempted: false },
   { id: 's3', accountId: 'scottz', sender: 'Mailchimp', subject: 'Your campaign stats are in', sweepSeconds: 12 * 3600 + 600, exempted: false },
   { id: 's4', accountId: 'syzmail', sender: 'Jira', subject: '[PROJ-412] moved to In Review', sweepSeconds: 2 * 86400 + 7200, exempted: false },
@@ -201,6 +201,7 @@ export interface StoreState {
   addSweepRule: (rule: Omit<SweepRule, 'id' | 'enabled'>) => void;
   applySweepAction: (criteria: Criterion[], criteriaLogic: 'and' | 'or', action: string, delayHours: number) => void;
   addNewEmail: (email: Partial<Email> & Pick<Email, 'id' | 'columnId' | 'accountId' | 'sender' | 'subject' | 'snippet' | 'time' | 'unread'>) => void;
+  removeSweepEmail: (emailId: string) => void;
   tickSweepCountdowns: () => void;
 
   // Persist helpers injected by useSyncStore (no-op until hydrated)
@@ -468,20 +469,24 @@ export const useStore = create<StoreState>((set, get) => ({
     emails: [{ starred: false, ...email } as Email, ...s.emails],
   })),
 
+  removeSweepEmail: (emailId) => set(s => ({
+    sweepEmails: s.sweepEmails.filter(e => e.id !== emailId),
+    emails: s.emails.filter(e => e.id !== emailId),
+  })),
+
   tickSweepCountdowns: () => set(s => {
-    const updated = s.sweepEmails.map(e => ({ ...e, sweepSeconds: Math.max(0, e.sweepSeconds - 1) }));
-    const expired = updated.filter(e => e.sweepSeconds <= 0);
-    const expiredIds = new Set(expired.map(e => e.id));
-    // Mark expired sweep emails as read before removing (they'll be archived/deleted)
-    if (expiredIds.size > 0) {
-      for (const id of expiredIds) {
-        const email = s.emails.find(e => e.id === id);
-        if (email?.unread) fireEmailAction(id, 'mark_read');
+    const updated = s.sweepEmails.map(e => {
+      // Skip already-expiring cards
+      if (e.expiring) return e;
+      const next = Math.max(0, e.sweepSeconds - 1);
+      if (next <= 0) {
+        // Transition to expiring — mark as read
+        const email = s.emails.find(em => em.id === e.id);
+        if (email?.unread) fireEmailAction(e.id, 'mark_read');
+        return { ...e, sweepSeconds: 0, expiring: true };
       }
-    }
-    return {
-      sweepEmails: updated.filter(e => e.sweepSeconds > 0),
-      emails: expiredIds.size > 0 ? s.emails.filter(e => !expiredIds.has(e.id)) : s.emails,
-    };
+      return { ...e, sweepSeconds: next };
+    });
+    return { sweepEmails: updated };
   }),
 }));

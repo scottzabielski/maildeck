@@ -50,6 +50,7 @@ export type SweepEmail = {
   sweepSeconds: number;
   exempted: boolean;
   action?: string;
+  expiring?: boolean;
 };
 
 export type SweepRule = {
