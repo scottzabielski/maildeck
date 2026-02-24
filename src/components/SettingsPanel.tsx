@@ -8,6 +8,13 @@ import { useDeleteColumn } from '../hooks/useColumns.ts';
 import { ConnectAccountFlow } from './settings/ConnectAccountFlow.tsx';
 import type { Account, Column as ColumnType, Criterion, SweepRule } from '../types/index.ts';
 
+function ruleMatchesSearch(name: string, criteria: Criterion[], query: string): boolean {
+  if (!query) return true;
+  const q = query.toLowerCase();
+  if (name.toLowerCase().includes(q)) return true;
+  return criteria.some(c => c.value.toLowerCase().includes(q));
+}
+
 // ========================================
 // SETTINGS SECTIONS CONFIG
 // ========================================
@@ -134,6 +141,11 @@ function SettingsColumns({ columns }: { columns: ColumnType[] }) {
   const { reorderColumns, openCriteriaEditor, openNewColumnEditor, toggleColumn } = useStore();
   const { user } = useAuth();
   const deleteMutation = useDeleteColumn();
+  const [search, setSearch] = useState('');
+
+  const filteredColumns = search
+    ? columns.filter(col => ruleMatchesSearch(col.name, col.criteria, search))
+    : columns;
 
   const handleDelete = (columnId: string) => {
     if (!user?.id) return;
@@ -147,14 +159,21 @@ function SettingsColumns({ columns }: { columns: ColumnType[] }) {
     <>
       <div className="settings-content-title">Streams</div>
       <div className="settings-content-desc">Configure your deck streams, their order, and filter criteria. Drag to reorder.</div>
+      <input
+        className="filter-input"
+        placeholder="Search streams..."
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+        style={{ width: '100%', marginBottom: 8 }}
+      />
       <Reorder.Group
         as="div"
         axis="y"
-        values={columns}
-        onReorder={reorderColumns}
+        values={filteredColumns}
+        onReorder={search ? undefined as any : reorderColumns}
         className="settings-card"
       >
-        {columns.map(col => (
+        {filteredColumns.map(col => (
           <Reorder.Item
             key={col.id}
             value={col}
@@ -216,6 +235,11 @@ function SettingsSweepRules({ sweepRules, toggleSweepRule }: { sweepRules: Sweep
   const { sweepDelayHours, setSweepDelayHours, openSweepRuleEditorForRule } = useStore();
   const { user } = useAuth();
   const deleteMutation = useDeleteSweepRule();
+  const [search, setSearch] = useState('');
+
+  const filteredRules = search
+    ? sweepRules.filter(rule => ruleMatchesSearch(rule.name, rule.criteria, search))
+    : sweepRules;
 
   const handleDelete = (ruleId: string) => {
     if (!user?.id) return;
@@ -250,8 +274,15 @@ function SettingsSweepRules({ sweepRules, toggleSweepRule }: { sweepRules: Sweep
         </div>
       </div>
       <div className="settings-content-title" style={{ marginTop: '20px' }}>Rules</div>
+      <input
+        className="filter-input"
+        placeholder="Search rules..."
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+        style={{ width: '100%', marginBottom: 8 }}
+      />
       <div className="settings-card">
-        {sweepRules.map(rule => (
+        {filteredRules.map(rule => (
           <div key={rule.id} className="sweep-rule">
             <div className="sweep-rule-top">
               <span

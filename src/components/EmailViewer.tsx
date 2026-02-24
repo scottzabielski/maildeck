@@ -192,7 +192,7 @@ export function EmailViewer() {
             </div>
             <div className="email-viewer-timestamp">
               {timestamp}
-              {email.toEmail && account && email.toEmail.toLowerCase() !== account.email.toLowerCase() && (
+              {email.toEmail && (
                 <span className="email-viewer-to"> to {email.toEmail}</span>
               )}
             </div>

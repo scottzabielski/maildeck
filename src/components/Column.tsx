@@ -1,9 +1,10 @@
-import { useMemo, useCallback } from 'react';
+import { useMemo, useCallback, useRef, useLayoutEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Icons } from './ui/Icons.tsx';
 import { EmailCard } from './EmailCard.tsx';
 import { useStore } from '../store/index.ts';
 import { emailMatchesCriteria } from '../lib/emailFilter.ts';
+import { scrollPositions } from '../lib/scrollPositions.ts';
 import type { Column as ColumnType } from '../types/index.ts';
 
 interface ColumnProps {
@@ -33,12 +34,22 @@ export function Column({ column }: ColumnProps) {
   }, [sweepEmails]);
   const unreadCount = columnEmails.filter(e => e.unread).length;
 
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const saved = scrollPositions.get(column.id);
+    if (saved && scrollRef.current) {
+      scrollRef.current.scrollTop = saved;
+    }
+  }, [column.id]);
+
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
+    scrollPositions.set(column.id, el.scrollTop);
     if (el.scrollTop + el.clientHeight >= el.scrollHeight - 200) {
       if (_hasNextPage && !_isFetchingNextPage) _fetchNextPage?.();
     }
-  }, [_fetchNextPage, _hasNextPage, _isFetchingNextPage]);
+  }, [column.id, _fetchNextPage, _hasNextPage, _isFetchingNextPage]);
 
   return (
     <motion.div
@@ -60,7 +71,7 @@ export function Column({ column }: ColumnProps) {
           <Icons.Filter />
         </button>
       </div>
-      <div className="column-emails" onScroll={handleScroll}>
+      <div className="column-emails" ref={scrollRef} onScroll={handleScroll}>
         <AnimatePresence initial={false}>
           {columnEmails.map(email => (
             <EmailCard

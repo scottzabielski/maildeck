@@ -98,6 +98,13 @@ export const Icons = {
       <polyline points="20 6 9 17 4 12" />
     </svg>
   ),
+  FilterLines: () => (
+    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <line x1={4} y1={6} x2={20} y2={6} />
+      <line x1={4} y1={12} x2={20} y2={12} />
+      <line x1={4} y1={18} x2={20} y2={18} />
+    </svg>
+  ),
   DragHandle: () => (
     <svg width={12} height={12} viewBox="0 0 16 16" fill="currentColor" className="drag-handle">
       <circle cx={5.5} cy={2.5} r={1.2} />
