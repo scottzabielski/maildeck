@@ -1,9 +1,26 @@
-import { LayoutGroup, AnimatePresence, Reorder } from 'framer-motion';
+import { LayoutGroup, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
 import { Icons } from './ui/Icons.tsx';
 import { Column } from './Column.tsx';
 import { SweepColumn } from './SweepColumn.tsx';
 import { EmailViewer } from './EmailViewer.tsx';
 import { useStore } from '../store/index.ts';
+import type { Column as ColumnType } from '../types/index.ts';
+
+function DraggableColumn({ column }: { column: ColumnType }) {
+  const controls = useDragControls();
+  return (
+    <Reorder.Item
+      value={column}
+      as="div"
+      className="column-reorder-item"
+      dragListener={false}
+      dragControls={controls}
+      whileDrag={{ scale: 1.02, boxShadow: '0 8px 30px rgba(0,0,0,0.3)', zIndex: 10 }}
+    >
+      <Column column={column} dragControls={controls} />
+    </Reorder.Item>
+  );
+}
 
 export function StreamsLayout() {
   const { columns: allColumns, reorderColumns, selectedEmail } = useStore();
@@ -48,15 +65,7 @@ export function StreamsLayout() {
           className="deck-columns-reorder"
         >
           {columns.map(col => (
-            <Reorder.Item
-              key={col.id}
-              value={col}
-              as="div"
-              className="column-reorder-item"
-              whileDrag={{ scale: 1.02, boxShadow: '0 8px 30px rgba(0,0,0,0.3)', zIndex: 10 }}
-            >
-              <Column column={col} />
-            </Reorder.Item>
+            <DraggableColumn key={col.id} column={col} />
           ))}
           <div className="add-column-area">
             <button className="add-column-btn" onClick={handleAddColumn} title="Add column">

@@ -1,5 +1,5 @@
 import { useMemo, useCallback, useRef, useLayoutEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, type DragControls } from 'framer-motion';
 import { Icons } from './ui/Icons.tsx';
 import { EmailCard } from './EmailCard.tsx';
 import { useStore } from '../store/index.ts';
@@ -9,9 +9,10 @@ import type { Column as ColumnType } from '../types/index.ts';
 
 interface ColumnProps {
   column: ColumnType;
+  dragControls?: DragControls;
 }
 
-export function Column({ column }: ColumnProps) {
+export function Column({ column, dragControls }: ColumnProps) {
   const { emails, accounts, disabledAccountIds, openCriteriaEditor, selectedEmail, sweepEmails, _fetchNextPage, _hasNextPage, _isFetchingNextPage } = useStore();
   const selectedEmailId = selectedEmail ? selectedEmail.emailId : null;
   const columnEmails = useMemo(
@@ -59,7 +60,11 @@ export function Column({ column }: ColumnProps) {
       layout
       transition={{ layout: { duration: 0.4, ease: [0.4, 0, 0.2, 1] } }}
     >
-      <div className="column-header" style={{ borderTopColor: column.accent }}>
+      <div
+        className="column-header"
+        style={{ borderTopColor: column.accent, cursor: dragControls ? 'grab' : undefined }}
+        onPointerDown={(e) => dragControls?.start(e)}
+      >
         <span className="column-drag-handle"><Icons.DragHandle /></span>
         <span className="column-icon" style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: column.accent }} />
         <span className="column-name">{column.name}</span>
