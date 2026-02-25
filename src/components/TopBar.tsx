@@ -5,7 +5,7 @@ import { useStore } from '../store/index.ts';
 import { useSyncAccount } from '../hooks/useEmails.ts';
 
 export function TopBar() {
-  const { views, activeViewId, setActiveView, accounts, disabledAccountIds, toggleAccount, toggleSettings, reorderAccounts, searchQuery, setSearchQuery, globalFilters, toggleGlobalFilter, soundMuted, toggleSoundMuted } = useStore();
+  const { views, activeViewId, setActiveView, accounts, disabledAccountIds, toggleAccount, toggleSettings, reorderAccounts, searchQuery, setSearchQuery, globalFilters, toggleGlobalFilter, soundMuted, toggleSoundMuted, autoRotateView, toggleAutoRotateView } = useStore();
   const draggedRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -190,6 +190,13 @@ export function TopBar() {
         title={soundMuted ? 'Unmute sound effects' : 'Mute sound effects'}
       >
         {soundMuted ? <Icons.VolumeOff /> : <Icons.Volume />}
+      </button>
+      <button
+        className={`topbar-rotate-btn${autoRotateView ? ' active' : ''}`}
+        onClick={toggleAutoRotateView}
+        title={autoRotateView ? 'Stop auto-rotate' : 'Auto-rotate views'}
+      >
+        <Icons.Rotate />
       </button>
       <button className="settings-btn" onClick={toggleSettings}>
         <Icons.Settings />

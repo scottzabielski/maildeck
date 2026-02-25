@@ -409,6 +409,39 @@ button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
   opacity: 0.35;
 }
 
+.topbar-rotate-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  opacity: 0.5;
+}
+
+.topbar-rotate-btn:hover {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  opacity: 1;
+}
+
+.topbar-rotate-btn.active {
+  color: var(--blue);
+  opacity: 1;
+}
+
+.topbar-rotate-btn.active svg {
+  animation: rotate-slow 3s linear infinite;
+}
+
+@keyframes rotate-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 .settings-btn {
   width: 32px;
   height: 32px;
@@ -429,6 +462,15 @@ button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 /* ========================================
    DECK LAYOUT
    ======================================== */
+.deck-view-wrapper {
+  height: calc(100% - var(--topbar-height));
+  overflow: hidden;
+}
+
+.deck-view-wrapper .deck-layout {
+  height: 100%;
+}
+
 .deck-layout {
   display: flex;
   height: calc(100% - var(--topbar-height));

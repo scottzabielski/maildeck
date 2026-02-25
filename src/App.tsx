@@ -4,6 +4,7 @@ import { useStore } from './store/index.ts';
 import { useAuth } from './hooks/useAuth.ts';
 import { useSyncStore } from './hooks/useSyncStore.ts';
 import { useKeyboardNav } from './hooks/useKeyboardNav.ts';
+import { useAutoRotateView } from './hooks/useAutoRotateView.ts';
 import { TopBar } from './components/TopBar.tsx';
 import { DeckLayout } from './components/DeckLayout.tsx';
 import { ContextMenu } from './components/ContextMenu.tsx';
@@ -74,6 +75,9 @@ function AppShell() {
 
   // Keyboard navigation (arrow keys, Enter, Escape)
   useKeyboardNav();
+
+  // Auto-rotate between Streams and Inboxes views
+  useAutoRotateView();
 
   // Sync Supabase data → Zustand store
   const { hydrated, persistTheme, persistSweepDelay, persistColumnReorder, persistColumnCreate, persistColumnUpdate, persistColumnDelete, persistAccountReorder, persistAccountRename } = useSyncStore();

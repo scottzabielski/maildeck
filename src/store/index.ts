@@ -175,6 +175,7 @@ export interface StoreState {
   searchQuery: string;
   globalFilters: Set<string>;
   soundMuted: boolean;
+  autoRotateView: boolean;
   sweepDelayHours: number;
   sweepRuleEditor: SweepRuleEditorState | null;
   streamEditorPrefill: StreamEditorPrefill | null;
@@ -207,6 +208,7 @@ export interface StoreState {
   setSearchQuery: (query: string) => void;
   toggleGlobalFilter: (filter: string) => void;
   toggleSoundMuted: () => void;
+  toggleAutoRotateView: () => void;
   highlightEmail: (emailId: string, columnId: string, accountId: string) => void;
   clearHighlight: () => void;
   selectEmail: (emailId: string, sourceColumnId: string, sourceAccountId: string) => void;
@@ -286,6 +288,7 @@ export const useStore = create<StoreState>((set, get) => ({
   searchQuery: '',
   globalFilters: new Set<string>(),
   soundMuted: true,
+  autoRotateView: false,
   sweepDelayHours: 24,
   sweepRuleEditor: null,
   streamEditorPrefill: null,
@@ -366,6 +369,7 @@ export const useStore = create<StoreState>((set, get) => ({
     return { globalFilters: next };
   }),
   toggleSoundMuted: () => set(s => ({ soundMuted: !s.soundMuted })),
+  toggleAutoRotateView: () => set(s => ({ autoRotateView: !s.autoRotateView })),
 
   highlightEmail: (emailId, columnId, accountId) => set({ highlightedEmail: { emailId, columnId, accountId }, lastClickedEmailId: emailId }),
   clearHighlight: () => set({ highlightedEmail: null }),
