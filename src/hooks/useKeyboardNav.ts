@@ -78,6 +78,34 @@ export function useKeyboardNav() {
         return;
       }
 
+      if (e.key === 'r' && !e.metaKey && !e.ctrlKey) {
+        const targetId = highlightedEmail?.emailId || selectedEmail?.emailId;
+        if (targetId) {
+          state.toggleRead(targetId);
+        }
+        return;
+      }
+
+      if (e.key === 'a' && !e.metaKey && !e.ctrlKey) {
+        const targetId = highlightedEmail?.emailId || selectedEmail?.emailId;
+        if (!targetId) return;
+        // In list mode (no viewer), advance highlight to next email before archiving
+        if (!viewerOpen && highlightedEmail) {
+          const entry = getColumnEntry(highlightedEmail.columnId);
+          if (entry) {
+            const idx = entry.emailIds.indexOf(targetId);
+            // Prefer next email, fall back to previous
+            const nextId = entry.emailIds[idx + 1] || entry.emailIds[idx - 1];
+            if (nextId) {
+              state.highlightEmail(nextId, highlightedEmail.columnId, highlightedEmail.accountId);
+              scrollToEmail(nextId);
+            }
+          }
+        }
+        state.archiveEmail(targetId);
+        return;
+      }
+
       if (e.key === 'Delete' || e.key === 'Backspace') {
         const targetId = highlightedEmail?.emailId || selectedEmail?.emailId;
         if (targetId) {
