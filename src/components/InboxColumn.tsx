@@ -12,7 +12,7 @@ interface InboxColumnProps {
 }
 
 export function InboxColumn({ accountId, columnOrder = 0 }: InboxColumnProps) {
-  const { emails, accounts, disabledAccountIds, selectedEmail, highlightedEmail, sweepEmails, columns, sweepRules, searchQuery, globalFilters, _fetchNextPage, _hasNextPage, _isFetchingNextPage } = useStore();
+  const { emails, accounts, disabledAccountIds, selectedEmail, highlightedEmail, multiSelectedIds, sweepEmails, columns, sweepRules, searchQuery, globalFilters, _fetchNextPage, _hasNextPage, _isFetchingNextPage } = useStore();
   const selectedEmailId = selectedEmail ? selectedEmail.emailId : null;
   const highlightedEmailId = highlightedEmail ? highlightedEmail.emailId : null;
 
@@ -190,6 +190,7 @@ export function InboxColumn({ accountId, columnOrder = 0 }: InboxColumnProps) {
               sourceAccountId={accountId || undefined}
               selectedEmailId={selectedEmailId}
               highlightedEmailId={highlightedEmailId}
+              multiSelectedIds={multiSelectedIds}
               sweepSeconds={sweepLookup.get(email.id)?.seconds}
               sweepAction={sweepLookup.get(email.id)?.action}
               matchedSweepRule={sweepRuleMatchLookup.get(email.id)}

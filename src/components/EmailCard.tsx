@@ -12,27 +12,42 @@ interface EmailCardProps {
   sourceAccountId?: string;
   selectedEmailId: string | null;
   highlightedEmailId: string | null;
+  multiSelectedIds: Set<string>;
   sweepSeconds?: number;
   sweepAction?: string;
   matchedSweepRule?: { action: string };
   matchedStreams?: Array<{ id: string; accent: string }>;
 }
 
-export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, selectedEmailId, highlightedEmailId, sweepSeconds, sweepAction, matchedSweepRule, matchedStreams }: EmailCardProps) {
+export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, selectedEmailId, highlightedEmailId, multiSelectedIds, sweepSeconds, sweepAction, matchedSweepRule, matchedStreams }: EmailCardProps) {
   const openContextMenu = useStore(s => s.openContextMenu);
   const selectEmail = useStore(s => s.selectEmail);
   const highlightEmail = useStore(s => s.highlightEmail);
+  const toggleMultiSelect = useStore(s => s.toggleMultiSelect);
+  const rangeSelect = useStore(s => s.rangeSelect);
+  const clearMultiSelect = useStore(s => s.clearMultiSelect);
   const account = accounts.find(a => a.id === email.accountId);
   const isHighlighted = highlightedEmailId === email.id;
   const isViewing = selectedEmailId === email.id;
+  const isMultiSelected = multiSelectedIds.has(email.id);
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     openContextMenu(e.clientX, e.clientY, email.id, columnId || email.columnId);
   };
 
-  const handleClick = () => {
-    highlightEmail(email.id, columnId || email.columnId, sourceAccountId || email.accountId);
+  const handleClick = (e: React.MouseEvent) => {
+    if (e.metaKey || e.ctrlKey) {
+      e.preventDefault();
+      toggleMultiSelect(email.id);
+    } else if (e.shiftKey) {
+      e.preventDefault();
+      window.getSelection()?.removeAllRanges();
+      rangeSelect(email.id, columnId || email.columnId);
+    } else {
+      clearMultiSelect();
+      highlightEmail(email.id, columnId || email.columnId, sourceAccountId || email.accountId);
+    }
   };
 
   const handleDoubleClick = () => {
@@ -44,7 +59,7 @@ export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, 
 
   return (
     <motion.div
-      className={`email-card ${email.unread ? 'unread' : ''} ${email.starred ? 'starred' : ''}${isHighlighted ? ' highlighted' : ''}${isViewing ? ' viewing' : ''}${hasSweepRule ? ' has-sweep' : ''}`}
+      className={`email-card ${email.unread ? 'unread' : ''} ${email.starred ? 'starred' : ''}${isHighlighted ? ' highlighted' : ''}${isViewing ? ' viewing' : ''}${isMultiSelected ? ' multi-selected' : ''}${hasSweepRule ? ' has-sweep' : ''}`}
       style={{ '--column-accent': accent } as React.CSSProperties}
       layout
       initial={{ opacity: 0, y: -8 }}

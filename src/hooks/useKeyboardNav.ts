@@ -17,7 +17,9 @@ export function useKeyboardNav() {
       const viewerOpen = !!selectedEmail;
 
       if (e.key === 'Escape') {
-        if (viewerOpen) {
+        if (state.multiSelectedIds.size > 0) {
+          state.clearMultiSelect();
+        } else if (viewerOpen) {
           state.deselectEmail();
         } else if (highlightedEmail) {
           state.clearHighlight();
@@ -79,6 +81,17 @@ export function useKeyboardNav() {
       }
 
       if (e.key === 'r' && !e.metaKey && !e.ctrlKey) {
+        if (state.multiSelectedIds.size > 0) {
+          // Determine majority state: if most are unread, mark all read; otherwise mark all unread
+          const selectedEmails = state.emails.filter(e => state.multiSelectedIds.has(e.id));
+          const unreadCount = selectedEmails.filter(e => e.unread).length;
+          if (unreadCount > selectedEmails.length / 2) {
+            state.markSelectedRead();
+          } else {
+            state.markSelectedUnread();
+          }
+          return;
+        }
         const targetId = highlightedEmail?.emailId || selectedEmail?.emailId;
         if (targetId) {
           state.toggleRead(targetId);
@@ -87,6 +100,10 @@ export function useKeyboardNav() {
       }
 
       if (e.key === 'a' && !e.metaKey && !e.ctrlKey) {
+        if (state.multiSelectedIds.size > 0) {
+          state.archiveSelected();
+          return;
+        }
         const targetId = highlightedEmail?.emailId || selectedEmail?.emailId;
         if (!targetId) return;
         // In list mode (no viewer), advance highlight to next email before archiving
@@ -107,6 +124,11 @@ export function useKeyboardNav() {
       }
 
       if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (state.multiSelectedIds.size > 0) {
+          e.preventDefault();
+          state.deleteSelected();
+          return;
+        }
         const targetId = highlightedEmail?.emailId || selectedEmail?.emailId;
         if (targetId) {
           e.preventDefault();

@@ -86,6 +86,6 @@ export type HighlightedEmailState = {
 
 export type UndoAction = {
   type: string;
-  email: Email | SweepEmail;
+  email: Email | Email[] | SweepEmail;
   timestamp: number;
 };

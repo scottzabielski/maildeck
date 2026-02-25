@@ -3,7 +3,7 @@ import { Icons } from './ui/Icons.tsx';
 import { useStore } from '../store/index.ts';
 
 export function ContextMenu() {
-  const { contextMenu, closeContextMenu, emails, columns, toggleRead, toggleStar, archiveEmail, deleteEmail, moveToSweep, openSweepRuleEditor, openStreamEditorFromEmail, openCriteriaEditorWithPrefill } = useStore();
+  const { contextMenu, closeContextMenu, emails, columns, toggleRead, toggleStar, archiveEmail, deleteEmail, moveToSweep, openSweepRuleEditor, openStreamEditorFromEmail, openCriteriaEditorWithPrefill, multiSelectedIds, archiveSelected, deleteSelected, markSelectedRead, markSelectedUnread } = useStore();
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -28,8 +28,11 @@ export function ContextMenu() {
   const email = emails.find(e => e.id === contextMenu.emailId);
   if (!email) return null;
 
+  const isBulk = multiSelectedIds.size > 0 && multiSelectedIds.has(contextMenu.emailId);
+  const bulkCount = multiSelectedIds.size;
+
   // Viewport clamping
-  const menuW = 210, menuH = 230;
+  const menuW = 210, menuH = isBulk ? 140 : 230;
   const x = Math.min(contextMenu.x, window.innerWidth - menuW - 8);
   const y = Math.min(contextMenu.y, window.innerHeight - menuH - 8);
 
@@ -42,6 +45,29 @@ export function ContextMenu() {
       <span>{label}</span>
     </div>
   );
+
+  if (isBulk) {
+    // Determine majority read state for bulk toggle
+    const selectedEmails = emails.filter(e => multiSelectedIds.has(e.id));
+    const unreadCount = selectedEmails.filter(e => e.unread).length;
+    const majorityUnread = unreadCount > selectedEmails.length / 2;
+
+    return (
+      <div
+        ref={menuRef}
+        className="context-menu"
+        style={{ left: x, top: y }}
+      >
+        {item(
+          majorityUnread ? Icons.EnvelopeOpen : Icons.Envelope,
+          majorityUnread ? `Mark ${bulkCount} as read` : `Mark ${bulkCount} as unread`,
+          () => majorityUnread ? markSelectedRead() : markSelectedUnread()
+        )}
+        {item(Icons.Archive, `Archive ${bulkCount} emails`, () => archiveSelected())}
+        {item(Icons.Trash, `Delete ${bulkCount} emails`, () => deleteSelected(), true)}
+      </div>
+    );
+  }
 
   return (
     <div

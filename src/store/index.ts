@@ -5,6 +5,7 @@ import type {
 } from '../types/index.ts';
 import { fireEmailAction } from '../lib/emailActions.ts';
 import { emailMatchesCriteria } from '../lib/emailFilter.ts';
+import { getColumnEntry } from '../lib/columnRegistry.ts';
 import { supabase } from '../lib/supabase.ts';
 
 // ========================================
@@ -179,6 +180,8 @@ export interface StoreState {
   streamEditorPrefill: StreamEditorPrefill | null;
   selectedEmail: SelectedEmailState | null;
   highlightedEmail: HighlightedEmailState | null;
+  multiSelectedIds: Set<string>;
+  lastClickedEmailId: string | null;
   _pendingRemovals: Set<string>;
 
   setActiveView: (viewId: string) => void;
@@ -212,6 +215,13 @@ export interface StoreState {
   toggleStar: (emailId: string) => void;
   archiveEmail: (emailId: string) => void;
   deleteEmail: (emailId: string) => void;
+  toggleMultiSelect: (emailId: string) => void;
+  rangeSelect: (emailId: string, columnId: string) => void;
+  clearMultiSelect: () => void;
+  archiveSelected: () => void;
+  deleteSelected: () => void;
+  markSelectedRead: () => void;
+  markSelectedUnread: () => void;
   moveToSweep: (emailId: string) => void;
   exemptSweepEmail: (emailId: string) => void;
   undoLastAction: () => void;
@@ -281,6 +291,8 @@ export const useStore = create<StoreState>((set, get) => ({
   streamEditorPrefill: null,
   selectedEmail: null,
   highlightedEmail: null,
+  multiSelectedIds: new Set<string>(),
+  lastClickedEmailId: null,
   _pendingRemovals: new Set<string>(),
 
   setActiveView: (viewId) => set({ activeViewId: viewId, selectedEmail: null, highlightedEmail: null }),
@@ -355,7 +367,7 @@ export const useStore = create<StoreState>((set, get) => ({
   }),
   toggleSoundMuted: () => set(s => ({ soundMuted: !s.soundMuted })),
 
-  highlightEmail: (emailId, columnId, accountId) => set({ highlightedEmail: { emailId, columnId, accountId } }),
+  highlightEmail: (emailId, columnId, accountId) => set({ highlightedEmail: { emailId, columnId, accountId }, lastClickedEmailId: emailId }),
   clearHighlight: () => set({ highlightedEmail: null }),
 
   selectEmail: (emailId, sourceColumnId, sourceAccountId) => {
@@ -425,6 +437,112 @@ export const useStore = create<StoreState>((set, get) => ({
     fireEmailAction(emailId, 'delete');
   },
 
+  toggleMultiSelect: (emailId) => {
+    set(s => {
+      const next = new Set(s.multiSelectedIds);
+      if (next.has(emailId)) next.delete(emailId);
+      else next.add(emailId);
+      return { multiSelectedIds: next, lastClickedEmailId: emailId };
+    });
+  },
+
+  rangeSelect: (emailId, columnId) => {
+    const state = get();
+    const anchor = state.lastClickedEmailId;
+    const entry = getColumnEntry(columnId);
+    if (!entry) return;
+
+    const anchorIdx = anchor ? entry.emailIds.indexOf(anchor) : -1;
+    const targetIdx = entry.emailIds.indexOf(emailId);
+    if (targetIdx === -1) return;
+
+    const start = anchorIdx === -1 ? targetIdx : Math.min(anchorIdx, targetIdx);
+    const end = anchorIdx === -1 ? targetIdx : Math.max(anchorIdx, targetIdx);
+
+    const next = new Set(state.multiSelectedIds);
+    for (let i = start; i <= end; i++) {
+      next.add(entry.emailIds[i]);
+    }
+    set({ multiSelectedIds: next });
+  },
+
+  clearMultiSelect: () => set({ multiSelectedIds: new Set<string>(), lastClickedEmailId: null }),
+
+  archiveSelected: () => {
+    const state = get();
+    const ids = [...state.multiSelectedIds];
+    if (ids.length === 0) return;
+    const emailsToArchive = state.emails.filter(e => ids.includes(e.id));
+    if (emailsToArchive.length === 0) return;
+
+    // Mark as read before archiving
+    for (const email of emailsToArchive) {
+      if (email.unread) fireEmailAction(email.id, 'mark_read');
+    }
+
+    const removals = new Set(state._pendingRemovals);
+    for (const id of ids) removals.add(id);
+
+    const idSet = new Set(ids);
+    set(s => ({
+      emails: s.emails.filter(e => !idSet.has(e.id)),
+      undoAction: { type: 'archive', email: emailsToArchive.map(e => ({ ...e, unread: false })), timestamp: Date.now() },
+      multiSelectedIds: new Set<string>(),
+      lastClickedEmailId: null,
+      selectedEmail: s.selectedEmail && idSet.has(s.selectedEmail.emailId) ? null : s.selectedEmail,
+      highlightedEmail: s.highlightedEmail && idSet.has(s.highlightedEmail.emailId) ? null : s.highlightedEmail,
+      _pendingRemovals: removals,
+    }));
+
+    for (const id of ids) fireEmailAction(id, 'archive');
+  },
+
+  deleteSelected: () => {
+    const state = get();
+    const ids = [...state.multiSelectedIds];
+    if (ids.length === 0) return;
+    const emailsToDelete = state.emails.filter(e => ids.includes(e.id));
+    if (emailsToDelete.length === 0) return;
+
+    const removals = new Set(state._pendingRemovals);
+    for (const id of ids) removals.add(id);
+
+    const idSet = new Set(ids);
+    set(s => ({
+      emails: s.emails.filter(e => !idSet.has(e.id)),
+      undoAction: { type: 'delete', email: emailsToDelete, timestamp: Date.now() },
+      multiSelectedIds: new Set<string>(),
+      lastClickedEmailId: null,
+      selectedEmail: s.selectedEmail && idSet.has(s.selectedEmail.emailId) ? null : s.selectedEmail,
+      highlightedEmail: s.highlightedEmail && idSet.has(s.highlightedEmail.emailId) ? null : s.highlightedEmail,
+      _pendingRemovals: removals,
+    }));
+
+    for (const id of ids) fireEmailAction(id, 'delete');
+  },
+
+  markSelectedRead: () => {
+    const state = get();
+    const ids = [...state.multiSelectedIds];
+    if (ids.length === 0) return;
+    const idSet = new Set(ids);
+    set(s => ({
+      emails: s.emails.map(e => idSet.has(e.id) ? { ...e, unread: false } : e),
+    }));
+    for (const id of ids) fireEmailAction(id, 'mark_read');
+  },
+
+  markSelectedUnread: () => {
+    const state = get();
+    const ids = [...state.multiSelectedIds];
+    if (ids.length === 0) return;
+    const idSet = new Set(ids);
+    set(s => ({
+      emails: s.emails.map(e => idSet.has(e.id) ? { ...e, unread: true } : e),
+    }));
+    for (const id of ids) fireEmailAction(id, 'mark_unread');
+  },
+
   moveToSweep: (emailId) => {
     const email = get().emails.find(e => e.id === emailId);
     if (!email) return;
@@ -463,24 +581,26 @@ export const useStore = create<StoreState>((set, get) => ({
         undoAction: null,
       }));
     } else if (action.type === 'archive') {
+      const emailArr = Array.isArray(action.email) ? action.email as Email[] : [action.email as Email];
       const removals = new Set(get()._pendingRemovals);
-      removals.delete(action.email.id);
+      for (const e of emailArr) removals.delete(e.id);
       set(s => ({
-        emails: [action.email as Email, ...s.emails],
+        emails: [...emailArr, ...s.emails],
         undoAction: null,
         _pendingRemovals: removals,
       }));
-      fireEmailAction(action.email.id, 'unarchive');
+      for (const e of emailArr) fireEmailAction(e.id, 'unarchive');
     } else if (action.type === 'delete') {
+      const emailArr = Array.isArray(action.email) ? action.email as Email[] : [action.email as Email];
       const removals = new Set(get()._pendingRemovals);
-      removals.delete(action.email.id);
+      for (const e of emailArr) removals.delete(e.id);
       set(s => ({
-        emails: [action.email as Email, ...s.emails],
+        emails: [...emailArr, ...s.emails],
         undoAction: null,
         _pendingRemovals: removals,
       }));
       // Note: undelete is not straightforward with providers, so we unarchive
-      fireEmailAction(action.email.id, 'unarchive');
+      for (const e of emailArr) fireEmailAction(e.id, 'unarchive');
     } else if (action.type === 'moveToSweep') {
       set(s => ({
         sweepEmails: s.sweepEmails.filter(e => e.id !== action.email.id),

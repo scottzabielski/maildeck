@@ -15,7 +15,7 @@ interface ColumnProps {
 }
 
 export function Column({ column, dragControls, columnOrder = 0 }: ColumnProps) {
-  const { emails, accounts, disabledAccountIds, openColumnContextMenu, selectedEmail, highlightedEmail, sweepEmails, sweepRules, searchQuery, globalFilters, _fetchNextPage, _hasNextPage, _isFetchingNextPage } = useStore();
+  const { emails, accounts, disabledAccountIds, openColumnContextMenu, selectedEmail, highlightedEmail, multiSelectedIds, sweepEmails, sweepRules, searchQuery, globalFilters, _fetchNextPage, _hasNextPage, _isFetchingNextPage } = useStore();
   const selectedEmailId = selectedEmail ? selectedEmail.emailId : null;
   const highlightedEmailId = highlightedEmail ? highlightedEmail.emailId : null;
 
@@ -158,6 +158,7 @@ export function Column({ column, dragControls, columnOrder = 0 }: ColumnProps) {
               columnId={column.id}
               selectedEmailId={selectedEmailId}
               highlightedEmailId={highlightedEmailId}
+              multiSelectedIds={multiSelectedIds}
               sweepSeconds={sweepLookup.get(email.id)?.seconds}
               sweepAction={sweepLookup.get(email.id)?.action}
               matchedSweepRule={sweepRuleMatchLookup.get(email.id)}
