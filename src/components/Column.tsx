@@ -15,7 +15,7 @@ interface ColumnProps {
 }
 
 export function Column({ column, dragControls, columnOrder = 0 }: ColumnProps) {
-  const { emails, accounts, disabledAccountIds, openColumnContextMenu, selectedEmail, highlightedEmail, sweepEmails, sweepRules, searchQuery, globalStreamNoSweep, _fetchNextPage, _hasNextPage, _isFetchingNextPage } = useStore();
+  const { emails, accounts, disabledAccountIds, openColumnContextMenu, selectedEmail, highlightedEmail, sweepEmails, sweepRules, searchQuery, globalFilters, _fetchNextPage, _hasNextPage, _isFetchingNextPage } = useStore();
   const selectedEmailId = selectedEmail ? selectedEmail.emailId : null;
   const highlightedEmailId = highlightedEmail ? highlightedEmail.emailId : null;
 
@@ -62,13 +62,16 @@ export function Column({ column, dragControls, columnOrder = 0 }: ColumnProps) {
         || e.snippet.toLowerCase().includes(q)
       );
     }
-    if (globalStreamNoSweep) {
+    if (globalFilters.has('no-sweep')) {
       filtered = filtered.filter(e =>
         !enabledSweepRules.some(rule => emailMatchesCriteria(e, rule.criteria, rule.criteriaLogic))
       );
     }
+    if (globalFilters.has('unread')) filtered = filtered.filter(e => e.unread);
+    if (globalFilters.has('read')) filtered = filtered.filter(e => !e.unread);
+    if (globalFilters.has('starred')) filtered = filtered.filter(e => e.starred);
     return filtered;
-  }, [columnEmails, searchQuery, globalStreamNoSweep, enabledSweepRules]);
+  }, [columnEmails, searchQuery, globalFilters, enabledSweepRules]);
 
   // Register column in the column registry for keyboard navigation
   useEffect(() => {
@@ -104,7 +107,7 @@ export function Column({ column, dragControls, columnOrder = 0 }: ColumnProps) {
   // Skip when a filter is active — fetching more pages won't help since the filter hides them.
   useEffect(() => {
     const el = scrollRef.current;
-    if (!el || !_hasNextPage || !_fetchNextPage || globalStreamNoSweep || searchQuery) return;
+    if (!el || !_hasNextPage || !_fetchNextPage || globalFilters.size > 0 || searchQuery) return;
     const check = () => {
       if (_isFetchingNextPage) return;
       const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 200;
@@ -115,7 +118,7 @@ export function Column({ column, dragControls, columnOrder = 0 }: ColumnProps) {
     check();
     const id = setInterval(check, 300);
     return () => clearInterval(id);
-  }, [_hasNextPage, _isFetchingNextPage, _fetchNextPage, globalStreamNoSweep, searchQuery]);
+  }, [_hasNextPage, _isFetchingNextPage, _fetchNextPage, globalFilters, searchQuery]);
 
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
@@ -161,7 +164,7 @@ export function Column({ column, dragControls, columnOrder = 0 }: ColumnProps) {
             />
           ))}
         </AnimatePresence>
-        {_isFetchingNextPage && !globalStreamNoSweep && !searchQuery && <div className="column-load-more" />}
+        {_isFetchingNextPage && globalFilters.size === 0 && !searchQuery && <div className="column-load-more" />}
       </div>
     </motion.div>
   );

@@ -335,6 +335,18 @@ button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
   font-weight: 600;
 }
 
+.topbar-filter-menu-separator {
+  height: 1px;
+  background: var(--border-subtle);
+  margin: 4px 6px;
+}
+
+.filter-check {
+  font-size: 12px;
+  font-weight: 700;
+  margin-right: 4px;
+}
+
 /* Account Badges */
 .account-badges {
   display: flex;

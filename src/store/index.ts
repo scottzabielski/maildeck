@@ -172,8 +172,7 @@ export interface StoreState {
   contextMenu: ContextMenuState | null;
   columnContextMenu: ColumnContextMenuState | null;
   searchQuery: string;
-  globalInboxFilter: 'none' | 'no-stream' | 'no-sweep' | 'neither';
-  globalStreamNoSweep: boolean;
+  globalFilters: Set<string>;
   soundMuted: boolean;
   sweepDelayHours: number;
   sweepRuleEditor: SweepRuleEditorState | null;
@@ -203,8 +202,7 @@ export interface StoreState {
   openColumnContextMenu: (x: number, y: number, columnId: string) => void;
   closeColumnContextMenu: () => void;
   setSearchQuery: (query: string) => void;
-  setGlobalInboxFilter: (filter: 'none' | 'no-stream' | 'no-sweep' | 'neither') => void;
-  toggleGlobalStreamNoSweep: () => void;
+  toggleGlobalFilter: (filter: string) => void;
   toggleSoundMuted: () => void;
   highlightEmail: (emailId: string, columnId: string, accountId: string) => void;
   clearHighlight: () => void;
@@ -276,8 +274,7 @@ export const useStore = create<StoreState>((set, get) => ({
   contextMenu: null,
   columnContextMenu: null,
   searchQuery: '',
-  globalInboxFilter: 'none',
-  globalStreamNoSweep: false,
+  globalFilters: new Set<string>(),
   soundMuted: true,
   sweepDelayHours: 24,
   sweepRuleEditor: null,
@@ -347,8 +344,15 @@ export const useStore = create<StoreState>((set, get) => ({
   openColumnContextMenu: (x, y, columnId) => set({ columnContextMenu: { x, y, columnId } }),
   closeColumnContextMenu: () => set({ columnContextMenu: null }),
   setSearchQuery: (query) => set({ searchQuery: query }),
-  setGlobalInboxFilter: (filter) => set({ globalInboxFilter: filter }),
-  toggleGlobalStreamNoSweep: () => set(s => ({ globalStreamNoSweep: !s.globalStreamNoSweep })),
+  toggleGlobalFilter: (filter) => set(s => {
+    const next = new Set(s.globalFilters);
+    // unread and read are mutually exclusive
+    if (filter === 'unread' && !next.has('unread')) { next.delete('read'); next.add('unread'); }
+    else if (filter === 'read' && !next.has('read')) { next.delete('unread'); next.add('read'); }
+    else if (next.has(filter)) { next.delete(filter); }
+    else { next.add(filter); }
+    return { globalFilters: next };
+  }),
   toggleSoundMuted: () => set(s => ({ soundMuted: !s.soundMuted })),
 
   highlightEmail: (emailId, columnId, accountId) => set({ highlightedEmail: { emailId, columnId, accountId } }),

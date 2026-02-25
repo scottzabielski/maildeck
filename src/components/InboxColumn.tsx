@@ -1,13 +1,10 @@
-import { useMemo, useCallback, useState, useRef, useEffect, useLayoutEffect } from 'react';
+import { useMemo, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { EmailCard } from './EmailCard.tsx';
-import { Icons } from './ui/Icons.tsx';
 import { useStore } from '../store/index.ts';
 import { emailMatchesCriteria } from '../lib/emailFilter.ts';
-import { scrollPositions, filterModes } from '../lib/scrollPositions.ts';
+import { scrollPositions } from '../lib/scrollPositions.ts';
 import { registerColumn, unregisterColumn } from '../lib/columnRegistry.ts';
-
-type FilterMode = 'none' | 'off' | 'no-stream' | 'no-sweep' | 'neither';
 
 interface InboxColumnProps {
   accountId: string | null;
@@ -15,25 +12,9 @@ interface InboxColumnProps {
 }
 
 export function InboxColumn({ accountId, columnOrder = 0 }: InboxColumnProps) {
-  const { emails, accounts, disabledAccountIds, selectedEmail, highlightedEmail, sweepEmails, columns, sweepRules, searchQuery, globalInboxFilter, _fetchNextPage, _hasNextPage, _isFetchingNextPage } = useStore();
+  const { emails, accounts, disabledAccountIds, selectedEmail, highlightedEmail, sweepEmails, columns, sweepRules, searchQuery, globalFilters, _fetchNextPage, _hasNextPage, _isFetchingNextPage } = useStore();
   const selectedEmailId = selectedEmail ? selectedEmail.emailId : null;
   const highlightedEmailId = highlightedEmail ? highlightedEmail.emailId : null;
-
-  const filterKey = accountId || 'all-inboxes';
-  const [filterMode, setFilterModeRaw] = useState<FilterMode>(
-    () => (filterModes.get(filterKey) as FilterMode) || 'none'
-  );
-  const setFilterMode = useCallback((update: FilterMode | ((prev: FilterMode) => FilterMode)) => {
-    setFilterModeRaw(prev => {
-      const next = typeof update === 'function' ? update(prev) : update;
-      filterModes.set(filterKey, next);
-      return next;
-    });
-  }, [filterKey]);
-  const [filterMenuOpen, setFilterMenuOpen] = useState(false);
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const filterBtnRef = useRef<HTMLButtonElement>(null);
-  const filterMenuRef = useRef<HTMLDivElement>(null);
 
   const columnEmails = useMemo(() => {
     const q = searchQuery.toLowerCase();
@@ -106,24 +87,20 @@ export function InboxColumn({ accountId, columnOrder = 0 }: InboxColumnProps) {
     return map;
   }, [columnEmails, enabledStreams]);
 
-  // Per-column filter overrides global; 'none' = use global, 'off' = explicitly no filter
-  const effectiveFilter = filterMode === 'none' ? globalInboxFilter : filterMode === 'off' ? 'none' : filterMode;
-
   const displayEmails = useMemo(() => {
-    if (effectiveFilter === 'none') return columnEmails;
+    if (globalFilters.size === 0) return columnEmails;
 
     return columnEmails.filter(email => {
-      const inStream = matchedStreamsMap.has(email.id);
-      const hasSweep = enabledSweepRules.some(rule =>
+      if (globalFilters.has('no-stream') && matchedStreamsMap.has(email.id)) return false;
+      if (globalFilters.has('no-sweep') && enabledSweepRules.some(rule =>
         emailMatchesCriteria(email, rule.criteria, rule.criteriaLogic)
-      );
-
-      if (effectiveFilter === 'no-stream') return !inStream;
-      if (effectiveFilter === 'no-sweep') return !hasSweep;
-      // 'neither'
-      return !inStream && !hasSweep;
+      )) return false;
+      if (globalFilters.has('unread') && !email.unread) return false;
+      if (globalFilters.has('read') && email.unread) return false;
+      if (globalFilters.has('starred') && !email.starred) return false;
+      return true;
     });
-  }, [columnEmails, effectiveFilter, matchedStreamsMap, enabledSweepRules]);
+  }, [columnEmails, globalFilters, matchedStreamsMap, enabledSweepRules]);
 
   // Register column in the column registry for keyboard navigation
   const registryColumnId = accountId || 'all-inboxes';
@@ -181,61 +158,6 @@ export function InboxColumn({ accountId, columnOrder = 0 }: InboxColumnProps) {
     }
   }, [scrollKey, _fetchNextPage, _hasNextPage, _isFetchingNextPage]);
 
-  const handleFilterClick = useCallback(() => {
-    if (filterMenuOpen) {
-      setFilterMenuOpen(false);
-      return;
-    }
-    setFilterMode(prev => {
-      if (prev === 'off') return 'none';               // opt back into global
-      if (prev !== 'none') return 'none';               // clear local override
-      if (globalInboxFilter !== 'none') return 'off';   // opt out of global
-      return 'neither';                                 // no global → toggle on
-    });
-  }, [filterMenuOpen, globalInboxFilter]);
-
-  const handleFilterMouseDown = useCallback(() => {
-    longPressTimer.current = setTimeout(() => {
-      setFilterMenuOpen(true);
-    }, 500);
-  }, []);
-
-  const handleFilterMouseUp = useCallback(() => {
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current);
-      longPressTimer.current = null;
-    }
-  }, []);
-
-  const handleFilterMouseLeave = useCallback(() => {
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current);
-      longPressTimer.current = null;
-    }
-  }, []);
-
-  const handleSelectFilterMode = useCallback((mode: FilterMode) => {
-    setFilterMode(prev => prev === mode ? 'none' : mode);
-    setFilterMenuOpen(false);
-  }, []);
-
-  // Close menu on outside click
-  useEffect(() => {
-    if (!filterMenuOpen) return;
-    const handleClick = (e: MouseEvent) => {
-      if (
-        filterMenuRef.current && !filterMenuRef.current.contains(e.target as Node) &&
-        filterBtnRef.current && !filterBtnRef.current.contains(e.target as Node)
-      ) {
-        setFilterMenuOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [filterMenuOpen]);
-
-  const filterActive = effectiveFilter !== 'none';
-
   return (
     <motion.div
       className="column"
@@ -255,41 +177,6 @@ export function InboxColumn({ accountId, columnOrder = 0 }: InboxColumnProps) {
           )}
         </span>
         <span className="column-count">{unreadCount > 0 ? unreadCount : displayEmails.length}</span>
-        <div style={{ position: 'relative', marginLeft: 'auto' }}>
-          <button
-            ref={filterBtnRef}
-            className={`inbox-filter-btn${filterActive ? ' active' : ''}`}
-            onClick={handleFilterClick}
-            onMouseDown={handleFilterMouseDown}
-            onMouseUp={handleFilterMouseUp}
-            onMouseLeave={handleFilterMouseLeave}
-            title={filterActive ? `Filter: ${effectiveFilter}` : 'Filter uncategorized'}
-          >
-            <Icons.FilterLines />
-          </button>
-          {filterMenuOpen && (
-            <div ref={filterMenuRef} className="inbox-filter-menu">
-              <button
-                className={`inbox-filter-menu-item${filterMode === 'no-stream' ? ' active' : ''}`}
-                onClick={() => handleSelectFilterMode('no-stream')}
-              >
-                No stream
-              </button>
-              <button
-                className={`inbox-filter-menu-item${filterMode === 'no-sweep' ? ' active' : ''}`}
-                onClick={() => handleSelectFilterMode('no-sweep')}
-              >
-                No sweep rule
-              </button>
-              <button
-                className={`inbox-filter-menu-item${filterMode === 'neither' ? ' active' : ''}`}
-                onClick={() => handleSelectFilterMode('neither')}
-              >
-                Neither
-              </button>
-            </div>
-          )}
-        </div>
       </div>
       <div className="column-emails" ref={scrollRef} onScroll={handleScroll}>
         <AnimatePresence initial={false}>

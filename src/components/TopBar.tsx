@@ -4,10 +4,8 @@ import { Icons } from './ui/Icons.tsx';
 import { useStore } from '../store/index.ts';
 import { useSyncAccount } from '../hooks/useEmails.ts';
 
-type FilterMode = 'none' | 'no-stream' | 'no-sweep' | 'neither';
-
 export function TopBar() {
-  const { views, activeViewId, setActiveView, accounts, disabledAccountIds, toggleAccount, toggleSettings, reorderAccounts, searchQuery, setSearchQuery, globalInboxFilter, setGlobalInboxFilter, globalStreamNoSweep, toggleGlobalStreamNoSweep, soundMuted, toggleSoundMuted } = useStore();
+  const { views, activeViewId, setActiveView, accounts, disabledAccountIds, toggleAccount, toggleSettings, reorderAccounts, searchQuery, setSearchQuery, globalFilters, toggleGlobalFilter, soundMuted, toggleSoundMuted } = useStore();
   const draggedRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -22,11 +20,6 @@ export function TopBar() {
       inputRef.current?.blur();
     }
   }, [setSearchQuery]);
-
-  const handleSelectFilter = useCallback((mode: FilterMode) => {
-    setGlobalInboxFilter(globalInboxFilter === mode ? 'none' : mode);
-    setMenuOpen(false);
-  }, [globalInboxFilter, setGlobalInboxFilter]);
 
   // Close menu on outside click
   useEffect(() => {
@@ -43,16 +36,11 @@ export function TopBar() {
     return () => document.removeEventListener('mousedown', handleClick);
   }, [menuOpen]);
 
-  const isInboxes = activeViewId === 'inboxes';
-  const filterActive = isInboxes ? globalInboxFilter !== 'none' : globalStreamNoSweep;
+  const filterActive = globalFilters.size > 0;
 
   const handleFilterClick = useCallback(() => {
-    if (isInboxes) {
-      setMenuOpen(prev => !prev);
-    } else {
-      toggleGlobalStreamNoSweep();
-    }
-  }, [isInboxes, toggleGlobalStreamNoSweep]);
+    setMenuOpen(prev => !prev);
+  }, []);
 
   const handleRefresh = useCallback(async () => {
     if (syncing) return;
@@ -99,29 +87,54 @@ export function TopBar() {
           ref={menuBtnRef}
           className={`topbar-filter-btn${filterActive ? ' active' : ''}`}
           onClick={handleFilterClick}
-          title={isInboxes ? 'Filter all inboxes' : (globalStreamNoSweep ? 'Showing: no sweep rule' : 'Filter: no sweep rule')}
+          title={filterActive ? `Filter: ${[...globalFilters].join(', ')}` : 'Filter emails'}
         >
           <Icons.FilterLines />
         </button>
-        {isInboxes && menuOpen && (
+        {menuOpen && (
           <div ref={menuRef} className="topbar-filter-menu">
             <button
-              className={`topbar-filter-menu-item${globalInboxFilter === 'no-stream' ? ' active' : ''}`}
-              onClick={() => handleSelectFilter('no-stream')}
+              className={`topbar-filter-menu-item${!filterActive ? ' active' : ''}`}
+              onClick={() => { useStore.setState({ globalFilters: new Set() }); setMenuOpen(false); }}
             >
-              No stream
+              All Messages
+            </button>
+            <div className="topbar-filter-menu-separator" />
+            <button
+              className={`topbar-filter-menu-item${globalFilters.has('unread') ? ' active' : ''}`}
+              onClick={() => toggleGlobalFilter('unread')}
+            >
+              {globalFilters.has('unread') && <span className="filter-check">&#10003;</span>}
+              Unread
             </button>
             <button
-              className={`topbar-filter-menu-item${globalInboxFilter === 'no-sweep' ? ' active' : ''}`}
-              onClick={() => handleSelectFilter('no-sweep')}
+              className={`topbar-filter-menu-item${globalFilters.has('read') ? ' active' : ''}`}
+              onClick={() => toggleGlobalFilter('read')}
             >
-              No sweep rule
+              {globalFilters.has('read') && <span className="filter-check">&#10003;</span>}
+              Read
             </button>
             <button
-              className={`topbar-filter-menu-item${globalInboxFilter === 'neither' ? ' active' : ''}`}
-              onClick={() => handleSelectFilter('neither')}
+              className={`topbar-filter-menu-item${globalFilters.has('starred') ? ' active' : ''}`}
+              onClick={() => toggleGlobalFilter('starred')}
             >
-              Neither
+              {globalFilters.has('starred') && <span className="filter-check">&#10003;</span>}
+              Starred
+            </button>
+            <div className="topbar-filter-menu-separator" />
+            <button
+              className={`topbar-filter-menu-item${globalFilters.has('no-stream') ? ' active' : ''}`}
+              onClick={() => toggleGlobalFilter('no-stream')}
+            >
+              {globalFilters.has('no-stream') && <span className="filter-check">&#10003;</span>}
+              No Stream
+            </button>
+            <button
+              className={`topbar-filter-menu-item${globalFilters.has('no-sweep') ? ' active' : ''}`}
+              onClick={() => toggleGlobalFilter('no-sweep')}
+            >
+              {globalFilters.has('no-sweep') && <span className="filter-check">&#10003;</span>}
+              No Sweep Rule
             </button>
           </div>
         )}
