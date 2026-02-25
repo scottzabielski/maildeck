@@ -15,7 +15,7 @@ interface ColumnProps {
 }
 
 export function Column({ column, dragControls, columnOrder = 0 }: ColumnProps) {
-  const { emails, accounts, disabledAccountIds, openColumnContextMenu, selectedEmail, highlightedEmail, multiSelectedIds, sweepEmails, sweepRules, searchQuery, globalFilters, _fetchNextPage, _hasNextPage, _isFetchingNextPage } = useStore();
+  const { emails, accounts, disabledAccountIds, openColumnContextMenu, selectedEmail, highlightedEmail, multiSelectedIds, sweepEmails, sweepRules, searchQuery, globalFilters, _fetchNextPage, _hasNextPage, _isFetchingNextPage, _viewSwitchKey } = useStore();
   const selectedEmailId = selectedEmail ? selectedEmail.emailId : null;
   const highlightedEmailId = highlightedEmail ? highlightedEmail.emailId : null;
 
@@ -130,11 +130,12 @@ export function Column({ column, dragControls, columnOrder = 0 }: ColumnProps) {
 
   return (
     <motion.div
+      key={`col-${column.id}-${_viewSwitchKey}`}
       className="column"
       style={{ '--column-accent': column.accent } as React.CSSProperties}
-      layoutId={'col-' + column.id}
-      layout
-      transition={{ layout: { duration: 0.4, ease: [0.4, 0, 0.2, 1] } }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.3, ease: 'easeOut', delay: columnOrder * 0.12 }}
     >
       <div
         className="column-header"

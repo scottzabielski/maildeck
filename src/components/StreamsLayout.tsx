@@ -74,7 +74,7 @@ export function StreamsLayout() {
           </div>
         </Reorder.Group>
       </LayoutGroup>
-      <SweepColumn key="sweep" />
+      <SweepColumn key="sweep" columnCount={columns.length} />
     </div>
   );
 }

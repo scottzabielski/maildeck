@@ -184,6 +184,7 @@ export interface StoreState {
   multiSelectedIds: Set<string>;
   lastClickedEmailId: string | null;
   _pendingRemovals: Set<string>;
+  _viewSwitchKey: number;
 
   setActiveView: (viewId: string) => void;
   setTheme: (theme: string) => void;
@@ -297,8 +298,9 @@ export const useStore = create<StoreState>((set, get) => ({
   multiSelectedIds: new Set<string>(),
   lastClickedEmailId: null,
   _pendingRemovals: new Set<string>(),
+  _viewSwitchKey: 0,
 
-  setActiveView: (viewId) => set({ activeViewId: viewId, selectedEmail: null, highlightedEmail: null }),
+  setActiveView: (viewId) => set(s => ({ activeViewId: viewId, selectedEmail: null, highlightedEmail: null, _viewSwitchKey: s._viewSwitchKey + 1 })),
   setTheme: (theme) => {
     try { localStorage.setItem('maildeck-theme', theme); } catch { /* noop */ }
     set({ theme });
