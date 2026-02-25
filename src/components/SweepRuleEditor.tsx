@@ -128,6 +128,34 @@ export function SweepRuleEditor() {
     if (validCriteria.length === 0) return;
     setError(null);
 
+    // Check for duplicate criteria against existing rules
+    const normalizeCriteria = (c: Criterion[]) =>
+      [...c].map(r => `${r.field}|${r.op}|${r.value.trim().toLowerCase()}`).sort().join('\n');
+
+    const newNorm = normalizeCriteria(validCriteria);
+    const duplicate = sweepRules.find(r => {
+      if (isEditMode && r.id === sweepRuleEditor!.ruleId) return false;
+      if (r.criteriaLogic !== criteriaLogic) return false;
+      const existingValid = r.criteria.filter(c => c.value.trim());
+      return normalizeCriteria(existingValid) === newNorm;
+    });
+
+    if (duplicate) {
+      const dupDesc = duplicate.criteria
+        .filter(c => c.value.trim())
+        .map(c => {
+          if (c.field === 'stream') {
+            const col = columns.find(col => col.id === c.value);
+            return `Stream: "${col?.name || c.value}"`;
+          }
+          const fieldLabel = { from: 'From', to: 'To', subject: 'Subject', body: 'Body', label: 'Label' }[c.field] || c.field;
+          return `${fieldLabel} ${c.op.replace('_', ' ')} "${c.value}"`;
+        })
+        .join(duplicate.criteriaLogic === 'and' ? ' AND ' : ' OR ');
+      setError(`A rule with these criteria already exists: ${dupDesc}`);
+      return;
+    }
+
     const ruleName = buildRuleName();
     const effectiveDelay = mode === 'keep_newest' ? 0 : delayHours;
     const detail = mode === 'keep_newest'
