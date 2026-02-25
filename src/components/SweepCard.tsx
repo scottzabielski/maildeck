@@ -81,7 +81,9 @@ export function SweepCard({ email }: SweepCardProps) {
       removeSweepEmailRef.current(email.id);
     }, 1000);
 
-    if (isDelete && !soundMuted) {
+    // Read soundMuted fresh from the store to avoid stale closure
+    const muted = useStore.getState().soundMuted;
+    if (isDelete && !muted) {
       playFireSound();
     }
 

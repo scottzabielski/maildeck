@@ -130,10 +130,21 @@ export function useKeyboardNav() {
           return;
         }
         const targetId = highlightedEmail?.emailId || selectedEmail?.emailId;
-        if (targetId) {
-          e.preventDefault();
-          state.deleteEmail(targetId);
+        if (!targetId) return;
+        e.preventDefault();
+        // Advance highlight to next email before deleting
+        if (!viewerOpen && highlightedEmail) {
+          const entry = getColumnEntry(highlightedEmail.columnId);
+          if (entry) {
+            const idx = entry.emailIds.indexOf(targetId);
+            const nextId = entry.emailIds[idx + 1] || entry.emailIds[idx - 1];
+            if (nextId) {
+              state.highlightEmail(nextId, highlightedEmail.columnId, highlightedEmail.accountId);
+              scrollToEmail(nextId);
+            }
+          }
         }
+        state.deleteEmail(targetId);
         return;
       }
 
