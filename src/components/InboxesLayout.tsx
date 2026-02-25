@@ -25,7 +25,7 @@ export function InboxesLayout() {
 
   return (
     <LayoutGroup>
-      <div className="deck-layout">
+      <div className="deck-layout deck-layout--inboxes">
         <InboxColumn key="all-inboxes" accountId={null} columnOrder={0} />
         {accounts.filter(a => !disabledAccountIds.has(a.id)).map((a, idx) => (
           <InboxColumn key={a.id} accountId={a.id} columnOrder={idx + 1} />
