@@ -255,6 +255,27 @@ button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 }
 
 /* Global Inbox Filter */
+.topbar-refresh-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  color: var(--text-tertiary);
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+.topbar-refresh-btn:hover { color: var(--text-secondary); background: var(--bg-base); }
+.topbar-refresh-btn:disabled { cursor: default; }
+.topbar-refresh-btn.syncing svg { animation: spin 0.8s linear infinite; }
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 .topbar-filter-btn {
   display: flex;
   align-items: center;
@@ -681,6 +702,11 @@ button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
   width: 10px;
   height: 10px;
   flex-shrink: 0;
+}
+
+.email-sweep-badge.rule-matched {
+  color: var(--red);
+  background: rgba(239, 68, 68, 0.08);
 }
 
 .email-sweep-badge.warning {

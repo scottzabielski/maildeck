@@ -2,6 +2,7 @@ import { useRef, useState, useCallback, useEffect } from 'react';
 import { Reorder } from 'framer-motion';
 import { Icons } from './ui/Icons.tsx';
 import { useStore } from '../store/index.ts';
+import { useSyncAccount } from '../hooks/useEmails.ts';
 
 type FilterMode = 'none' | 'no-stream' | 'no-sweep' | 'neither';
 
@@ -12,6 +13,8 @@ export function TopBar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuBtnRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const syncMutation = useSyncAccount();
+  const [syncing, setSyncing] = useState(false);
 
   const handleSearchKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
@@ -51,6 +54,20 @@ export function TopBar() {
     }
   }, [isInboxes, toggleGlobalStreamNoSweep]);
 
+  const handleRefresh = useCallback(async () => {
+    if (syncing) return;
+    setSyncing(true);
+    try {
+      await Promise.all(
+        accounts.map(a => syncMutation.mutateAsync({ accountId: a.id, mode: 'incremental' }))
+      );
+    } catch (e) {
+      console.error('Refresh sync error:', e);
+    } finally {
+      setSyncing(false);
+    }
+  }, [syncing, accounts, syncMutation]);
+
   return (
     <div className="topbar">
       <div className="topbar-logo">
@@ -69,6 +86,14 @@ export function TopBar() {
           </button>
         ))}
       </div>
+      <button
+        className={`topbar-refresh-btn${syncing ? ' syncing' : ''}`}
+        onClick={handleRefresh}
+        title="Refresh all inboxes"
+        disabled={syncing}
+      >
+        <Icons.Refresh />
+      </button>
       <div style={{ position: 'relative' }}>
         <button
           ref={menuBtnRef}

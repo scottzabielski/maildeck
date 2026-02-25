@@ -106,13 +106,38 @@ async function syncAccount(
     let messageCount: number;
 
     if (account.provider === 'gmail') {
-      messageCount = mode === 'full' || !account.sync_history_id
-        ? await gmailFullSync(supabase, account, accessToken)
-        : await gmailIncrementalSync(supabase, account, accessToken);
+      if (mode === 'full' || !account.sync_history_id) {
+        messageCount = await gmailFullSync(supabase, account, accessToken);
+      } else {
+        try {
+          messageCount = await gmailIncrementalSync(supabase, account, accessToken);
+        } catch (err) {
+          // History ID expired or invalid — fall back to full sync
+          if ((err as Error).message?.includes('404')) {
+            console.log(`Gmail history expired for ${accountId}, falling back to full sync`);
+            messageCount = await gmailFullSync(supabase, account, accessToken);
+          } else {
+            throw err;
+          }
+        }
+      }
     } else {
-      messageCount = mode === 'full' || !account.sync_delta_link
-        ? await outlookFullSync(supabase, account, accessToken)
-        : await outlookIncrementalSync(supabase, account, accessToken);
+      if (mode === 'full' || !account.sync_delta_link) {
+        messageCount = await outlookFullSync(supabase, account, accessToken);
+      } else {
+        try {
+          messageCount = await outlookIncrementalSync(supabase, account, accessToken);
+        } catch (err) {
+          // Delta link expired or invalid — fall back to full sync
+          if ((err as Error).message?.includes('410') || (err as Error).message?.includes('404')) {
+            console.log(`Outlook delta expired for ${accountId}, falling back to full sync`);
+            await supabase.from('email_accounts').update({ sync_delta_link: null }).eq('id', accountId);
+            messageCount = await outlookFullSync(supabase, account, accessToken);
+          } else {
+            throw err;
+          }
+        }
+      }
     }
 
     // If no sync_history_id yet, the full sync isn't complete — keep status as 'syncing'
@@ -264,10 +289,11 @@ async function gmailIncrementalSync(
   let pageToken: string | undefined;
 
   do {
-    const params = new URLSearchParams({
-      startHistoryId: historyId,
-      historyTypes: 'messageAdded,messageDeleted,labelAdded,labelRemoved',
-    });
+    const params = new URLSearchParams({ startHistoryId: historyId });
+    params.append('historyTypes', 'messageAdded');
+    params.append('historyTypes', 'messageDeleted');
+    params.append('historyTypes', 'labelAdded');
+    params.append('historyTypes', 'labelRemoved');
     if (pageToken) params.set('pageToken', pageToken);
 
     const res = await gmailFetch(accessToken, `/history?${params}`);
