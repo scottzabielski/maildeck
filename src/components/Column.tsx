@@ -21,6 +21,24 @@ export function Column({ column, dragControls }: ColumnProps) {
     [sweepRules]
   );
 
+  // Match each displayed email against enabled sweep rules → { action } for the soonest rule
+  const sweepRuleMatchLookup = useMemo(() => {
+    const map = new Map<string, { action: string }>();
+    if (enabledSweepRules.length === 0) return map;
+    for (const email of emails) {
+      let bestRule: { action: string; delayHours: number } | null = null;
+      for (const rule of enabledSweepRules) {
+        if (emailMatchesCriteria(email, rule.criteria, rule.criteriaLogic)) {
+          if (!bestRule || rule.delayHours < bestRule.delayHours) {
+            bestRule = { action: rule.action, delayHours: rule.delayHours };
+          }
+        }
+      }
+      if (bestRule) map.set(email.id, { action: bestRule.action });
+    }
+    return map;
+  }, [emails, enabledSweepRules]);
+
   const columnEmails = useMemo(() => {
     return emails.filter(e => {
       if (disabledAccountIds.has(e.accountId)) return false;
@@ -123,6 +141,7 @@ export function Column({ column, dragControls }: ColumnProps) {
               selectedEmailId={selectedEmailId}
               sweepSeconds={sweepLookup.get(email.id)?.seconds}
               sweepAction={sweepLookup.get(email.id)?.action}
+              matchedSweepRule={sweepRuleMatchLookup.get(email.id)}
             />
           ))}
         </AnimatePresence>

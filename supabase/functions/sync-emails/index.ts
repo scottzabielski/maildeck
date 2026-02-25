@@ -525,9 +525,11 @@ async function outlookIncrementalSync(
 
       if (removed.length > 0) {
         const ids = removed.map((msg: Record<string, unknown>) => msg.id as string);
+        // Inbox-scoped delta: @removed means "no longer in Inbox" (moved, deleted, etc.)
+        // Mark as archived so the client-side query (is_archived=false) filters them out
         await supabase
           .from('emails')
-          .update({ is_deleted: true })
+          .update({ is_archived: true })
           .eq('account_id', accountId)
           .in('provider_message_id', ids);
       }

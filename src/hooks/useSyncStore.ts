@@ -248,7 +248,7 @@ export function useSyncStore() {
 
     if (newIds.length === 0) return;
 
-    const { sweepRules } = useStore.getState();
+    const { sweepRules, applySweepAction } = useStore.getState();
     const enabledRules = sweepRules.filter(r => r.enabled);
     if (enabledRules.length === 0) return;
 
@@ -259,6 +259,10 @@ export function useSyncStore() {
       const newMatches = newEmails.filter(e => emailMatchesCriteria(e, rule.criteria, rule.criteriaLogic));
       if (newMatches.length === 0) continue;
 
+      // Immediate client-side: add to sweep queue with countdown right away
+      applySweepAction(rule.criteria, rule.criteriaLogic, rule.action, rule.delayHours);
+
+      // Server-side: queue matching emails in sweep_queue table
       applySweepRuleMutation.mutate({
         ruleId: rule.id,
         userId,
