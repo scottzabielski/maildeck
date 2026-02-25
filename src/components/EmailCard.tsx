@@ -11,17 +11,20 @@ interface EmailCardProps {
   columnId: string;
   sourceAccountId?: string;
   selectedEmailId: string | null;
+  highlightedEmailId: string | null;
   sweepSeconds?: number;
   sweepAction?: string;
   matchedSweepRule?: { action: string };
   matchedStreams?: Array<{ id: string; accent: string }>;
 }
 
-export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, selectedEmailId, sweepSeconds, sweepAction, matchedSweepRule, matchedStreams }: EmailCardProps) {
+export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, selectedEmailId, highlightedEmailId, sweepSeconds, sweepAction, matchedSweepRule, matchedStreams }: EmailCardProps) {
   const openContextMenu = useStore(s => s.openContextMenu);
   const selectEmail = useStore(s => s.selectEmail);
+  const highlightEmail = useStore(s => s.highlightEmail);
   const account = accounts.find(a => a.id === email.accountId);
-  const isSelected = selectedEmailId === email.id;
+  const isHighlighted = highlightedEmailId === email.id;
+  const isViewing = selectedEmailId === email.id;
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -29,6 +32,10 @@ export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, 
   };
 
   const handleClick = () => {
+    highlightEmail(email.id, columnId || email.columnId, sourceAccountId || email.accountId);
+  };
+
+  const handleDoubleClick = () => {
     selectEmail(email.id, columnId || email.columnId, sourceAccountId || email.accountId);
   };
 
@@ -37,7 +44,7 @@ export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, 
 
   return (
     <motion.div
-      className={`email-card ${email.unread ? 'unread' : ''} ${email.starred ? 'starred' : ''}${isSelected ? ' selected' : ''}${hasSweepRule ? ' has-sweep' : ''}`}
+      className={`email-card ${email.unread ? 'unread' : ''} ${email.starred ? 'starred' : ''}${isHighlighted ? ' highlighted' : ''}${isViewing ? ' viewing' : ''}${hasSweepRule ? ' has-sweep' : ''}`}
       style={{ '--column-accent': accent } as React.CSSProperties}
       layout
       initial={{ opacity: 0, y: -8 }}
@@ -46,6 +53,8 @@ export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, 
       transition={{ duration: 0.25 }}
       onContextMenu={handleContextMenu}
       onClick={handleClick}
+      onDoubleClick={handleDoubleClick}
+      data-email-id={email.id}
     >
       <div className="email-card-top">
         <span className="email-sender">{email.sender}</span>

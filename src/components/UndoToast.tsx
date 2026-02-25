@@ -1,21 +1,33 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store/index.ts';
 
 export function UndoToast() {
   const { undoAction, undoLastAction, clearUndo } = useStore();
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [toastVisible, setToastVisible] = useState(false);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (undoAction) {
-      timerRef.current = setTimeout(() => clearUndo(), 5000);
-      return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+      setToastVisible(true);
+      // Hide toast after 5s
+      toastTimerRef.current = setTimeout(() => setToastVisible(false), 5000);
+      // Clear undo action after 60s (Cmd+Z window)
+      clearTimerRef.current = setTimeout(() => clearUndo(), 60000);
+      return () => {
+        if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+        if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
+      };
+    } else {
+      setToastVisible(false);
     }
   }, [undoAction, clearUndo]);
 
-  if (!undoAction) return null;
+  if (!undoAction || !toastVisible) return null;
 
   const handleUndo = () => {
-    if (timerRef.current) clearTimeout(timerRef.current);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
     undoLastAction();
   };
 

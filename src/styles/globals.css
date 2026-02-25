@@ -2070,9 +2070,15 @@ button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
   border-right: 1px solid var(--border-subtle);
 }
 
-.email-card.selected {
+.email-card.highlighted {
   background: rgba(37, 99, 235, 0.08);
   border-left: 2px solid var(--blue);
+  padding-left: 10px;
+}
+
+.email-card.viewing {
+  background: rgba(37, 99, 235, 0.04);
+  border-left: 2px solid rgba(37, 99, 235, 0.4);
   padding-left: 10px;
 }
 

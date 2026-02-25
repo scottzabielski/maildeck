@@ -78,6 +78,12 @@ export type SelectedEmailState = {
   viewMode: string;
 };
 
+export type HighlightedEmailState = {
+  emailId: string;
+  columnId: string;
+  accountId: string;
+};
+
 export type UndoAction = {
   type: string;
   email: Email | SweepEmail;

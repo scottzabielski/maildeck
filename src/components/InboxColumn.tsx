@@ -5,16 +5,19 @@ import { Icons } from './ui/Icons.tsx';
 import { useStore } from '../store/index.ts';
 import { emailMatchesCriteria } from '../lib/emailFilter.ts';
 import { scrollPositions, filterModes } from '../lib/scrollPositions.ts';
+import { registerColumn, unregisterColumn } from '../lib/columnRegistry.ts';
 
 type FilterMode = 'none' | 'off' | 'no-stream' | 'no-sweep' | 'neither';
 
 interface InboxColumnProps {
   accountId: string | null;
+  columnOrder?: number;
 }
 
-export function InboxColumn({ accountId }: InboxColumnProps) {
-  const { emails, accounts, disabledAccountIds, selectedEmail, sweepEmails, columns, sweepRules, searchQuery, globalInboxFilter, _fetchNextPage, _hasNextPage, _isFetchingNextPage } = useStore();
+export function InboxColumn({ accountId, columnOrder = 0 }: InboxColumnProps) {
+  const { emails, accounts, disabledAccountIds, selectedEmail, highlightedEmail, sweepEmails, columns, sweepRules, searchQuery, globalInboxFilter, _fetchNextPage, _hasNextPage, _isFetchingNextPage } = useStore();
   const selectedEmailId = selectedEmail ? selectedEmail.emailId : null;
+  const highlightedEmailId = highlightedEmail ? highlightedEmail.emailId : null;
 
   const filterKey = accountId || 'all-inboxes';
   const [filterMode, setFilterModeRaw] = useState<FilterMode>(
@@ -121,6 +124,18 @@ export function InboxColumn({ accountId }: InboxColumnProps) {
       return !inStream && !hasSweep;
     });
   }, [columnEmails, effectiveFilter, matchedStreamsMap, enabledSweepRules]);
+
+  // Register column in the column registry for keyboard navigation
+  const registryColumnId = accountId || 'all-inboxes';
+  useEffect(() => {
+    registerColumn({
+      columnId: registryColumnId,
+      accountId,
+      emailIds: displayEmails.map(e => e.id),
+      order: columnOrder,
+    });
+    return () => unregisterColumn(registryColumnId);
+  }, [displayEmails, registryColumnId, accountId, columnOrder]);
 
   const account = accountId ? accounts.find(a => a.id === accountId) : null;
   const accent = account ? account.color : '#3b82f6';
@@ -287,6 +302,7 @@ export function InboxColumn({ accountId }: InboxColumnProps) {
               columnId={accountId || 'all-inboxes'}
               sourceAccountId={accountId || undefined}
               selectedEmailId={selectedEmailId}
+              highlightedEmailId={highlightedEmailId}
               sweepSeconds={sweepLookup.get(email.id)?.seconds}
               sweepAction={sweepLookup.get(email.id)?.action}
               matchedSweepRule={sweepRuleMatchLookup.get(email.id)}

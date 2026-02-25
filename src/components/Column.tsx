@@ -5,16 +5,19 @@ import { EmailCard } from './EmailCard.tsx';
 import { useStore } from '../store/index.ts';
 import { emailMatchesCriteria } from '../lib/emailFilter.ts';
 import { scrollPositions } from '../lib/scrollPositions.ts';
+import { registerColumn, unregisterColumn } from '../lib/columnRegistry.ts';
 import type { Column as ColumnType } from '../types/index.ts';
 
 interface ColumnProps {
   column: ColumnType;
   dragControls?: DragControls;
+  columnOrder?: number;
 }
 
-export function Column({ column, dragControls }: ColumnProps) {
-  const { emails, accounts, disabledAccountIds, openColumnContextMenu, selectedEmail, sweepEmails, sweepRules, searchQuery, globalStreamNoSweep, _fetchNextPage, _hasNextPage, _isFetchingNextPage } = useStore();
+export function Column({ column, dragControls, columnOrder = 0 }: ColumnProps) {
+  const { emails, accounts, disabledAccountIds, openColumnContextMenu, selectedEmail, highlightedEmail, sweepEmails, sweepRules, searchQuery, globalStreamNoSweep, _fetchNextPage, _hasNextPage, _isFetchingNextPage } = useStore();
   const selectedEmailId = selectedEmail ? selectedEmail.emailId : null;
+  const highlightedEmailId = highlightedEmail ? highlightedEmail.emailId : null;
 
   const enabledSweepRules = useMemo(
     () => sweepRules.filter(r => r.enabled),
@@ -66,6 +69,18 @@ export function Column({ column, dragControls }: ColumnProps) {
     }
     return filtered;
   }, [columnEmails, searchQuery, globalStreamNoSweep, enabledSweepRules]);
+
+  // Register column in the column registry for keyboard navigation
+  useEffect(() => {
+    registerColumn({
+      columnId: column.id,
+      accountId: null,
+      emailIds: displayEmails.map(e => e.id),
+      order: columnOrder,
+    });
+    return () => unregisterColumn(column.id);
+  }, [displayEmails, column.id, columnOrder]);
+
   // Build a lookup from email ID → sweep countdown seconds
   const sweepLookup = useMemo(() => {
     const map = new Map<string, { seconds: number; action: string }>();
@@ -139,6 +154,7 @@ export function Column({ column, dragControls }: ColumnProps) {
               accounts={accounts}
               columnId={column.id}
               selectedEmailId={selectedEmailId}
+              highlightedEmailId={highlightedEmailId}
               sweepSeconds={sweepLookup.get(email.id)?.seconds}
               sweepAction={sweepLookup.get(email.id)?.action}
               matchedSweepRule={sweepRuleMatchLookup.get(email.id)}

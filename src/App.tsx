@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useStore } from './store/index.ts';
 import { useAuth } from './hooks/useAuth.ts';
 import { useSyncStore } from './hooks/useSyncStore.ts';
+import { useKeyboardNav } from './hooks/useKeyboardNav.ts';
 import { TopBar } from './components/TopBar.tsx';
 import { DeckLayout } from './components/DeckLayout.tsx';
 import { ContextMenu } from './components/ContextMenu.tsx';
@@ -70,8 +71,9 @@ function AppShell() {
   const tickSweepCountdowns = useStore(s => s.tickSweepCountdowns);
   const addNewEmail = useStore(s => s.addNewEmail);
   const theme = useStore(s => s.theme);
-  const deselectEmail = useStore(s => s.deselectEmail);
-  const selectedEmail = useStore(s => s.selectedEmail);
+
+  // Keyboard navigation (arrow keys, Enter, Escape)
+  useKeyboardNav();
 
   // Sync Supabase data → Zustand store
   const { hydrated, persistTheme, persistSweepDelay, persistColumnReorder, persistColumnCreate, persistColumnUpdate, persistColumnDelete, persistAccountReorder, persistAccountRename } = useSyncStore();
@@ -100,15 +102,6 @@ function AppShell() {
       _persistAccountRename: persistAccountRename,
     });
   }, [persistTheme, persistSweepDelay, persistColumnReorder, persistColumnCreate, persistColumnUpdate, persistColumnDelete, persistAccountReorder, persistAccountRename]);
-
-  // Escape key to close email viewer (only if no context menu is open)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && selectedEmail && !useStore.getState().contextMenu && !useStore.getState().columnContextMenu) deselectEmail();
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [selectedEmail, deselectEmail]);
 
   // Apply theme to document
   useEffect(() => {

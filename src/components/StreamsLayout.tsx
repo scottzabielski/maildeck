@@ -6,7 +6,7 @@ import { EmailViewer } from './EmailViewer.tsx';
 import { useStore } from '../store/index.ts';
 import type { Column as ColumnType } from '../types/index.ts';
 
-function DraggableColumn({ column }: { column: ColumnType }) {
+function DraggableColumn({ column, columnOrder }: { column: ColumnType; columnOrder: number }) {
   const controls = useDragControls();
   return (
     <Reorder.Item
@@ -17,7 +17,7 @@ function DraggableColumn({ column }: { column: ColumnType }) {
       dragControls={controls}
       whileDrag={{ scale: 1.02, boxShadow: '0 8px 30px rgba(0,0,0,0.3)', zIndex: 10 }}
     >
-      <Column column={column} dragControls={controls} />
+      <Column column={column} dragControls={controls} columnOrder={columnOrder} />
     </Reorder.Item>
   );
 }
@@ -44,7 +44,7 @@ export function StreamsLayout() {
       return (
         <LayoutGroup>
           <div className="deck-layout deck-layout--viewing">
-            <Column key={sourceCol.id} column={sourceCol} />
+            <Column key={sourceCol.id} column={sourceCol} columnOrder={0} />
             <AnimatePresence mode="wait">
               <EmailViewer key={'viewer-' + selectedEmail.emailId} />
             </AnimatePresence>
@@ -64,8 +64,8 @@ export function StreamsLayout() {
           onReorder={handleReorder}
           className="deck-columns-reorder"
         >
-          {columns.map(col => (
-            <DraggableColumn key={col.id} column={col} />
+          {columns.map((col, idx) => (
+            <DraggableColumn key={col.id} column={col} columnOrder={idx} />
           ))}
           <div className="add-column-area">
             <button className="add-column-btn" onClick={handleAddColumn} title="Add column">

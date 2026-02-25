@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type {
   Account, View, Column, Criterion, Email, SweepEmail, SweepRule,
-  ContextMenuState, SelectedEmailState, UndoAction,
+  ContextMenuState, SelectedEmailState, HighlightedEmailState, UndoAction,
 } from '../types/index.ts';
 import { fireEmailAction } from '../lib/emailActions.ts';
 import { emailMatchesCriteria } from '../lib/emailFilter.ts';
@@ -179,6 +179,7 @@ export interface StoreState {
   sweepRuleEditor: SweepRuleEditorState | null;
   streamEditorPrefill: StreamEditorPrefill | null;
   selectedEmail: SelectedEmailState | null;
+  highlightedEmail: HighlightedEmailState | null;
   _pendingRemovals: Set<string>;
 
   setActiveView: (viewId: string) => void;
@@ -205,6 +206,8 @@ export interface StoreState {
   setGlobalInboxFilter: (filter: 'none' | 'no-stream' | 'no-sweep' | 'neither') => void;
   toggleGlobalStreamNoSweep: () => void;
   toggleSoundMuted: () => void;
+  highlightEmail: (emailId: string, columnId: string, accountId: string) => void;
+  clearHighlight: () => void;
   selectEmail: (emailId: string, sourceColumnId: string, sourceAccountId: string) => void;
   deselectEmail: () => void;
   toggleRead: (emailId: string) => void;
@@ -280,9 +283,10 @@ export const useStore = create<StoreState>((set, get) => ({
   sweepRuleEditor: null,
   streamEditorPrefill: null,
   selectedEmail: null,
+  highlightedEmail: null,
   _pendingRemovals: new Set<string>(),
 
-  setActiveView: (viewId) => set({ activeViewId: viewId, selectedEmail: null }),
+  setActiveView: (viewId) => set({ activeViewId: viewId, selectedEmail: null, highlightedEmail: null }),
   setTheme: (theme) => {
     try { localStorage.setItem('maildeck-theme', theme); } catch { /* noop */ }
     set({ theme });
@@ -347,17 +351,21 @@ export const useStore = create<StoreState>((set, get) => ({
   toggleGlobalStreamNoSweep: () => set(s => ({ globalStreamNoSweep: !s.globalStreamNoSweep })),
   toggleSoundMuted: () => set(s => ({ soundMuted: !s.soundMuted })),
 
+  highlightEmail: (emailId, columnId, accountId) => set({ highlightedEmail: { emailId, columnId, accountId } }),
+  clearHighlight: () => set({ highlightedEmail: null }),
+
   selectEmail: (emailId, sourceColumnId, sourceAccountId) => {
     const viewMode = get().activeViewId;
     const email = get().emails.find(e => e.id === emailId);
     set(s => ({
       selectedEmail: { emailId, sourceColumnId, sourceAccountId, viewMode },
+      highlightedEmail: { emailId, columnId: sourceColumnId, accountId: sourceAccountId },
       emails: s.emails.map(e => e.id === emailId ? { ...e, unread: false } : e),
       contextMenu: null,
     }));
     if (email?.unread) fireEmailAction(emailId, 'mark_read');
   },
-  deselectEmail: () => set({ selectedEmail: null }),
+  deselectEmail: () => set({ selectedEmail: null, highlightedEmail: null }),
 
   toggleRead: (emailId) => {
     const email = get().emails.find(e => e.id === emailId);
@@ -379,6 +387,7 @@ export const useStore = create<StoreState>((set, get) => ({
     const email = get().emails.find(e => e.id === emailId);
     if (!email) return;
     const sel = get().selectedEmail;
+    const hl = get().highlightedEmail;
     // Mark as read before archiving
     if (email.unread) {
       fireEmailAction(emailId, 'mark_read');
@@ -389,6 +398,7 @@ export const useStore = create<StoreState>((set, get) => ({
       emails: s.emails.filter(e => e.id !== emailId),
       undoAction: { type: 'archive', email: { ...email, unread: false }, timestamp: Date.now() },
       selectedEmail: sel && sel.emailId === emailId ? null : s.selectedEmail,
+      highlightedEmail: hl && hl.emailId === emailId ? null : s.highlightedEmail,
       _pendingRemovals: removals,
     }));
     fireEmailAction(emailId, 'archive');
@@ -398,12 +408,14 @@ export const useStore = create<StoreState>((set, get) => ({
     const email = get().emails.find(e => e.id === emailId);
     if (!email) return;
     const sel = get().selectedEmail;
+    const hl = get().highlightedEmail;
     const removals = new Set(get()._pendingRemovals);
     removals.add(emailId);
     set(s => ({
       emails: s.emails.filter(e => e.id !== emailId),
       undoAction: { type: 'delete', email, timestamp: Date.now() },
       selectedEmail: sel && sel.emailId === emailId ? null : s.selectedEmail,
+      highlightedEmail: hl && hl.emailId === emailId ? null : s.highlightedEmail,
       _pendingRemovals: removals,
     }));
     fireEmailAction(emailId, 'delete');

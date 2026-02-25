@@ -14,7 +14,7 @@ export function InboxesLayout() {
     return (
       <LayoutGroup>
         <div className="deck-layout deck-layout--viewing">
-          <InboxColumn key={sourceAccountId || 'all-inboxes'} accountId={sourceAccountId} />
+          <InboxColumn key={sourceAccountId || 'all-inboxes'} accountId={sourceAccountId} columnOrder={0} />
           <AnimatePresence mode="wait">
             <EmailViewer key={'viewer-' + selectedEmail.emailId} />
           </AnimatePresence>
@@ -26,9 +26,9 @@ export function InboxesLayout() {
   return (
     <LayoutGroup>
       <div className="deck-layout">
-        <InboxColumn key="all-inboxes" accountId={null} />
-        {accounts.filter(a => !disabledAccountIds.has(a.id)).map(a => (
-          <InboxColumn key={a.id} accountId={a.id} />
+        <InboxColumn key="all-inboxes" accountId={null} columnOrder={0} />
+        {accounts.filter(a => !disabledAccountIds.has(a.id)).map((a, idx) => (
+          <InboxColumn key={a.id} accountId={a.id} columnOrder={idx + 1} />
         ))}
       </div>
     </LayoutGroup>
