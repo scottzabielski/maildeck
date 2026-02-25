@@ -22,8 +22,22 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const { account_id, mode = 'incremental' } = body as {
       account_id?: string;
-      mode?: 'full' | 'incremental';
+      mode?: 'full' | 'incremental' | 'renew_push';
+      provider?: 'gmail' | 'outlook';
     };
+
+    // Delegate push subscription renewal to push-subscribe function
+    if (mode === 'renew_push') {
+      await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/push-subscribe`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+        },
+        body: JSON.stringify({ mode: 'renew', provider: body.provider }),
+      });
+      return jsonResponse({ status: 'delegated_to_push_subscribe' });
+    }
 
     const supabase = createAdminClient();
 

@@ -102,7 +102,7 @@ Deno.serve(async (req) => {
     const color = COLORS[nextSortOrder % COLORS.length];
 
     // Upsert the email account
-    const { error: upsertError } = await supabase
+    const { data: upserted, error: upsertError } = await supabase
       .from('email_accounts')
       .upsert(
         {
@@ -119,11 +119,25 @@ Deno.serve(async (req) => {
           sync_status: 'never_synced',
         },
         { onConflict: 'user_id,email' },
-      );
+      )
+      .select('id')
+      .single();
 
     if (upsertError) {
       console.error('Upsert failed:', upsertError);
       return redirectWithError(appUrl, 'Failed to save account');
+    }
+
+    // Set up push notifications (fire-and-forget)
+    if (upserted?.id) {
+      fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/push-subscribe`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+        },
+        body: JSON.stringify({ account_id: upserted.id }),
+      }).catch(err => console.error('Push subscribe failed:', err));
     }
 
     return new Response(null, {
