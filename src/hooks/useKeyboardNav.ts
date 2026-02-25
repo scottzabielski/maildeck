@@ -123,6 +123,14 @@ export function useKeyboardNav() {
         return;
       }
 
+      if (e.key === 's' && !e.metaKey && !e.ctrlKey) {
+        const targetId = highlightedEmail?.emailId || selectedEmail?.emailId;
+        if (targetId) {
+          state.toggleStar(targetId);
+        }
+        return;
+      }
+
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (state.multiSelectedIds.size > 0) {
           e.preventDefault();

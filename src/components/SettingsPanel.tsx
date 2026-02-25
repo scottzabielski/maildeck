@@ -446,14 +446,15 @@ function SettingsAppearance() {
 // ========================================
 function SettingsShortcuts() {
   const shortcuts = [
-    { key: '⌘ K', desc: 'Command palette' },
-    { key: '⌘ 1-5', desc: 'Jump to column' },
-    { key: '⌘ ,', desc: 'Open settings' },
-    { key: 'J / K', desc: 'Navigate emails' },
-    { key: 'E', desc: 'Archive email' },
-    { key: 'R', desc: 'Reply' },
-    { key: '⌘ ⇧ F', desc: 'Search all' },
-    { key: 'X', desc: 'Exempt from sweep' },
+    { key: '↑ / ↓', desc: 'Navigate emails in column' },
+    { key: '← / →', desc: 'Move between columns' },
+    { key: 'Enter', desc: 'Open email' },
+    { key: 'Esc', desc: 'Close / deselect' },
+    { key: 'A', desc: 'Archive email' },
+    { key: 'R', desc: 'Toggle read / unread' },
+    { key: 'S', desc: 'Toggle star' },
+    { key: '⌫', desc: 'Delete email' },
+    { key: '⌘ Z', desc: 'Undo last action' },
   ];
   return (
     <>
