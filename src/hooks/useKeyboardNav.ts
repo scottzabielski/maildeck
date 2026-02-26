@@ -123,6 +123,12 @@ export function useKeyboardNav() {
         return;
       }
 
+      if (e.key === 'v' && !e.metaKey && !e.ctrlKey) {
+        const current = state.activeViewId;
+        state.setActiveView(current === 'streams' ? 'inboxes' : 'streams');
+        return;
+      }
+
       if (e.key === 's' && !e.metaKey && !e.ctrlKey) {
         const targetId = highlightedEmail?.emailId || selectedEmail?.emailId;
         if (targetId) {
