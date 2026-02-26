@@ -177,9 +177,7 @@ export function useSyncStore() {
       const scheduledAt = new Date(item.scheduled_at).getTime();
       const secondsRemaining = Math.max(0, Math.floor((scheduledAt - Date.now()) / 1000));
 
-      // Skip items that are already past due — let the server executor handle them
-      // Only show items that the client already knew about (prev exists) or still have time left
-      if (secondsRemaining <= 0 && !prev) continue;
+      // Include past-due items so the client shows them and can execute the sweep
 
       merged.push({
         id: item.email_id,

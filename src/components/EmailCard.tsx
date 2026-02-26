@@ -54,7 +54,7 @@ export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, 
     selectEmail(email.id, columnId || email.columnId, sourceAccountId || email.accountId);
   };
 
-  const hasSweep = sweepSeconds != null && sweepSeconds > 0;
+  const hasSweep = sweepSeconds != null && sweepSeconds >= 0;
   const hasSweepRule = hasSweep || !!matchedSweepRule;
 
   return (
