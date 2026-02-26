@@ -97,6 +97,14 @@ export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, 
           </span>
         </div>
       )}
+      {!hasSweep && matchedSweepRule && (
+        <div className="email-card-sweep-row">
+          <span className="email-sweep-badge rule-matched">
+            <Icons.Sweep />
+            {matchedSweepRule.action === 'delete' || matchedSweepRule.action === 'keep_newest_delete' ? 'Delete' : 'Archive'} (sweep rule)
+          </span>
+        </div>
+      )}
       {matchedStreams && matchedStreams.length > 0 && (
         <div className="email-stream-indicators">
           {matchedStreams.map(s => (
