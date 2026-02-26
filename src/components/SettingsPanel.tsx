@@ -453,6 +453,7 @@ function SettingsShortcuts() {
     { key: 'A', desc: 'Archive email' },
     { key: 'R', desc: 'Toggle read / unread' },
     { key: 'S', desc: 'Toggle star' },
+    { key: 'V', desc: 'Switch view (Streams / Inboxes)' },
     { key: '⌫', desc: 'Delete email' },
     { key: '⌘ Z', desc: 'Undo last action' },
   ];
