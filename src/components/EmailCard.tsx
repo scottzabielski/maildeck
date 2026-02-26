@@ -59,10 +59,13 @@ export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, 
   let effectiveSweepAction = sweepAction;
   if (effectiveSweepSeconds == null && matchedSweepRule) {
     const emailAgeSec = Math.floor((Date.now() - email.time) / 1000);
-    effectiveSweepSeconds = Math.max(0, matchedSweepRule.delayHours * 3600 - emailAgeSec);
-    effectiveSweepAction = matchedSweepRule.action === 'delete' || matchedSweepRule.action === 'keep_newest_delete' ? 'delete' : 'archive';
+    const remaining = matchedSweepRule.delayHours * 3600 - emailAgeSec;
+    if (remaining > 0) {
+      effectiveSweepSeconds = remaining;
+      effectiveSweepAction = matchedSweepRule.action === 'delete' || matchedSweepRule.action === 'keep_newest_delete' ? 'delete' : 'archive';
+    }
   }
-  const hasSweep = effectiveSweepSeconds != null && effectiveSweepSeconds >= 0;
+  const hasSweep = effectiveSweepSeconds != null && effectiveSweepSeconds > 0;
   const hasSweepRule = hasSweep || !!matchedSweepRule;
 
   return (
