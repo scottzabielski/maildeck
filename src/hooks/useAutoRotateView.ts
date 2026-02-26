@@ -3,17 +3,34 @@ import { useStore } from '../store/index.ts';
 
 export function useAutoRotateView() {
   const autoRotateView = useStore(s => s.autoRotateView);
-  const activeViewId = useStore(s => s.activeViewId);
   const setActiveView = useStore(s => s.setActiveView);
 
   useEffect(() => {
     if (!autoRotateView) return;
 
-    const interval = setInterval(() => {
-      const current = useStore.getState().activeViewId;
-      setActiveView(current === 'streams' ? 'inboxes' : 'streams');
-    }, 60_000);
+    let timer: ReturnType<typeof setTimeout>;
 
-    return () => clearInterval(interval);
-  }, [autoRotateView, activeViewId, setActiveView]);
+    const resetTimer = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (useStore.getState().selectedEmail) {
+          resetTimer();
+          return;
+        }
+        const current = useStore.getState().activeViewId;
+        setActiveView(current === 'streams' ? 'inboxes' : 'streams');
+      }, 60_000);
+    };
+
+    resetTimer();
+
+    window.addEventListener('click', resetTimer);
+    window.addEventListener('keydown', resetTimer);
+
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('click', resetTimer);
+      window.removeEventListener('keydown', resetTimer);
+    };
+  }, [autoRotateView, setActiveView]);
 }

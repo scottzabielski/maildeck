@@ -30,9 +30,9 @@ if (typeof window !== 'undefined') {
   window.addEventListener('keydown', unlock);
 }
 
-function playFireSound() {
+function playFireSound(volume: number) {
   const audio = new Audio('/sounds/fire.mp3');
-  audio.volume = 0.6;
+  audio.volume = volume;
   audio.play().catch(() => {});
 
   let fadeStep = 0;
@@ -43,7 +43,7 @@ function playFireSound() {
       audio.pause();
       return;
     }
-    audio.volume = Math.max(0, 0.6 * (1 - fadeStep / 50));
+    audio.volume = Math.max(0, volume * (1 - fadeStep / 50));
   }, 100);
 }
 
@@ -56,7 +56,7 @@ export function SweepCard({ email }: SweepCardProps) {
   const exemptSweepEmail = useStore(s => s.exemptSweepEmail);
   const removeSweepEmail = useStore(s => s.removeSweepEmail);
   const selectEmail = useStore(s => s.selectEmail);
-  const soundMuted = useStore(s => s.soundMuted);
+  const soundVolume = useStore(s => s.soundVolume);
   const account = accounts.find(a => a.id === email.accountId);
   const cdClass = getCountdownClass(email.sweepSeconds);
   const isExpiring = email.expiring === true;
@@ -81,10 +81,10 @@ export function SweepCard({ email }: SweepCardProps) {
       removeSweepEmailRef.current(email.id);
     }, 1000);
 
-    // Read soundMuted fresh from the store to avoid stale closure
-    const muted = useStore.getState().soundMuted;
-    if (isDelete && !muted) {
-      playFireSound();
+    // Read soundVolume fresh from the store to avoid stale closure
+    const vol = useStore.getState().soundVolume;
+    if (isDelete && vol > 0) {
+      playFireSound(vol);
     }
 
     return () => clearTimeout(removeTimer);

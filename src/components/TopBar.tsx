@@ -4,8 +4,73 @@ import { Icons } from './ui/Icons.tsx';
 import { useStore } from '../store/index.ts';
 import { useSyncAccount } from '../hooks/useEmails.ts';
 
+function VolumeControl({ volume, onChange }: { volume: number; onChange: (v: number) => void }) {
+  const prevVolumeRef = useRef(0.6);
+  const isMuted = volume === 0;
+  const [open, setOpen] = useState(false);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const handleToggle = useCallback(() => {
+    if (isMuted) {
+      onChange(prevVolumeRef.current || 0.6);
+    } else {
+      prevVolumeRef.current = volume;
+      onChange(0);
+    }
+  }, [isMuted, volume, onChange]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleClick = (e: MouseEvent) => {
+      if (
+        menuRef.current && !menuRef.current.contains(e.target as Node) &&
+        btnRef.current && !btnRef.current.contains(e.target as Node)
+      ) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [open]);
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        ref={btnRef}
+        className={`topbar-mute-btn${isMuted ? ' muted' : ''}`}
+        onClick={() => setOpen(prev => !prev)}
+        title={isMuted ? 'Unmute sound effects' : 'Mute sound effects'}
+      >
+        {isMuted ? <Icons.VolumeOff /> : <Icons.Volume />}
+      </button>
+      {open && (
+        <div ref={menuRef} className="topbar-volume-menu">
+          <button
+            className="topbar-volume-mute-btn"
+            onClick={handleToggle}
+          >
+            {isMuted ? <Icons.VolumeOff /> : <Icons.Volume />}
+          </button>
+          <input
+            type="range"
+            className="topbar-volume-slider"
+            min={0}
+            max={1}
+            step={0.01}
+            value={volume}
+            onChange={e => onChange(parseFloat(e.target.value))}
+            title={`Volume: ${Math.round(volume * 100)}%`}
+          />
+          <span className="topbar-volume-label">{Math.round(volume * 100)}%</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function TopBar() {
-  const { views, activeViewId, setActiveView, accounts, disabledAccountIds, toggleAccount, toggleSettings, reorderAccounts, searchQuery, setSearchQuery, globalFilters, toggleGlobalFilter, soundMuted, toggleSoundMuted, autoRotateView, toggleAutoRotateView } = useStore();
+  const { views, activeViewId, setActiveView, accounts, disabledAccountIds, toggleAccount, toggleSettings, reorderAccounts, searchQuery, setSearchQuery, globalFilters, toggleGlobalFilter, soundVolume, setSoundVolume, autoRotateView, toggleAutoRotateView } = useStore();
   const draggedRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -184,13 +249,7 @@ export function TopBar() {
           </Reorder.Item>
         ))}
       </Reorder.Group>
-      <button
-        className={`topbar-mute-btn${soundMuted ? ' muted' : ''}`}
-        onClick={toggleSoundMuted}
-        title={soundMuted ? 'Unmute sound effects' : 'Mute sound effects'}
-      >
-        {soundMuted ? <Icons.VolumeOff /> : <Icons.Volume />}
-      </button>
+      <VolumeControl volume={soundVolume} onChange={setSoundVolume} />
       <button
         className={`topbar-rotate-btn${autoRotateView ? ' active' : ''}`}
         onClick={toggleAutoRotateView}

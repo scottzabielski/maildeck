@@ -174,7 +174,7 @@ export interface StoreState {
   columnContextMenu: ColumnContextMenuState | null;
   searchQuery: string;
   globalFilters: Set<string>;
-  soundMuted: boolean;
+  soundVolume: number;
   autoRotateView: boolean;
   sweepDelayHours: number;
   sweepRuleEditor: SweepRuleEditorState | null;
@@ -208,7 +208,7 @@ export interface StoreState {
   closeColumnContextMenu: () => void;
   setSearchQuery: (query: string) => void;
   toggleGlobalFilter: (filter: string) => void;
-  toggleSoundMuted: () => void;
+  setSoundVolume: (volume: number) => void;
   toggleAutoRotateView: () => void;
   highlightEmail: (emailId: string, columnId: string, accountId: string) => void;
   clearHighlight: () => void;
@@ -288,7 +288,7 @@ export const useStore = create<StoreState>((set, get) => ({
   columnContextMenu: null,
   searchQuery: '',
   globalFilters: new Set<string>(),
-  soundMuted: true,
+  soundVolume: 0,
   autoRotateView: false,
   sweepDelayHours: 24,
   sweepRuleEditor: null,
@@ -370,7 +370,7 @@ export const useStore = create<StoreState>((set, get) => ({
     else { next.add(filter); }
     return { globalFilters: next };
   }),
-  toggleSoundMuted: () => set(s => ({ soundMuted: !s.soundMuted })),
+  setSoundVolume: (volume) => set({ soundVolume: Math.max(0, Math.min(1, volume)) }),
   toggleAutoRotateView: () => set(s => ({ autoRotateView: !s.autoRotateView })),
 
   highlightEmail: (emailId, columnId, accountId) => set({ highlightedEmail: { emailId, columnId, accountId }, lastClickedEmailId: emailId }),

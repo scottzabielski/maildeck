@@ -409,6 +409,101 @@ button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
   opacity: 0.35;
 }
 
+.topbar-volume-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 200;
+  animation: contextMenuIn 120ms ease-out;
+  white-space: nowrap;
+}
+
+.topbar-volume-mute-btn {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all 0.15s ease;
+}
+
+.topbar-volume-mute-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-surface);
+}
+
+.topbar-volume-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  min-width: 28px;
+  text-align: right;
+}
+
+.topbar-volume-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 80px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border-primary);
+  outline: none;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+  opacity: 0.6;
+}
+
+.topbar-volume-slider:hover {
+  opacity: 1;
+}
+
+.topbar-volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.topbar-volume-slider::-webkit-slider-thumb:hover {
+  background: var(--text-primary);
+}
+
+.topbar-volume-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.topbar-volume-slider::-moz-range-thumb:hover {
+  background: var(--text-primary);
+}
+
+.topbar-volume-slider::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border-primary);
+}
+
 .topbar-rotate-btn {
   width: 32px;
   height: 32px;
