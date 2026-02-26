@@ -104,10 +104,10 @@ export function Column({ column, dragControls, columnOrder = 0 }: ColumnProps) {
   }, [column.id]);
 
   // Auto-fetch more pages if the column isn't scrollable.
-  // Skip when a filter is active — fetching more pages won't help since the filter hides them.
+  // Skip when a filter is active, search is active, or column is empty (no matches won't improve with older pages).
   useEffect(() => {
     const el = scrollRef.current;
-    if (!el || !_hasNextPage || !_fetchNextPage || globalFilters.size > 0 || searchQuery) return;
+    if (!el || !_hasNextPage || !_fetchNextPage || globalFilters.size > 0 || searchQuery || displayEmails.length === 0) return;
     const check = () => {
       if (_isFetchingNextPage) return;
       const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 200;
@@ -118,7 +118,7 @@ export function Column({ column, dragControls, columnOrder = 0 }: ColumnProps) {
     check();
     const id = setInterval(check, 300);
     return () => clearInterval(id);
-  }, [_hasNextPage, _isFetchingNextPage, _fetchNextPage, globalFilters, searchQuery]);
+  }, [_hasNextPage, _isFetchingNextPage, _fetchNextPage, globalFilters, searchQuery, displayEmails.length]);
 
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
@@ -166,7 +166,7 @@ export function Column({ column, dragControls, columnOrder = 0 }: ColumnProps) {
             />
           ))}
         </AnimatePresence>
-        {_isFetchingNextPage && globalFilters.size === 0 && !searchQuery && <div className="column-load-more" />}
+        {_isFetchingNextPage && globalFilters.size === 0 && !searchQuery && displayEmails.length > 0 && <div className="column-load-more" />}
       </div>
     </motion.div>
   );
