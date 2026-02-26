@@ -70,7 +70,7 @@ function VolumeControl({ volume, onChange }: { volume: number; onChange: (v: num
 }
 
 export function TopBar() {
-  const { views, activeViewId, setActiveView, accounts, disabledAccountIds, toggleAccount, toggleSettings, reorderAccounts, searchQuery, setSearchQuery, globalFilters, toggleGlobalFilter, soundVolume, setSoundVolume, autoRotateView, toggleAutoRotateView } = useStore();
+  const { views, activeViewId, setActiveView, accounts, disabledAccountIds, toggleAccount, toggleSettings, reorderAccounts, searchQuery, setSearchQuery, globalFilters, toggleGlobalFilter, soundVolume, setSoundVolume, autoRotateView, autoRotateProgress, toggleAutoRotateView } = useStore();
   const draggedRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -255,7 +255,21 @@ export function TopBar() {
         onClick={toggleAutoRotateView}
         title={autoRotateView ? 'Stop auto-rotate' : 'Auto-rotate views'}
       >
-        <Icons.Rotate />
+        {autoRotateView ? (() => {
+          const C = 2 * Math.PI * 7;
+          const filled = (autoRotateProgress / 60) * C;
+          return (
+            <svg width={16} height={16} viewBox="0 0 20 20">
+              <circle cx="10" cy="10" r="7" fill="none" stroke="var(--text-secondary)" strokeWidth="2" opacity="0.2" />
+              <circle cx="10" cy="10" r="7" fill="none" stroke="var(--blue)" strokeWidth="2"
+                strokeDasharray={`${filled} ${C - filled}`}
+                strokeDashoffset={C / 4}
+                strokeLinecap="round"
+                style={{ transition: 'stroke-dasharray 1s linear' }}
+              />
+            </svg>
+          );
+        })() : <Icons.Rotate />}
       </button>
       <button className="settings-btn" onClick={toggleSettings}>
         <Icons.Settings />

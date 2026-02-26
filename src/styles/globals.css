@@ -528,15 +528,6 @@ button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
   opacity: 1;
 }
 
-.topbar-rotate-btn.active svg {
-  animation: rotate-slow 3s linear infinite;
-}
-
-@keyframes rotate-slow {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
 .settings-btn {
   width: 32px;
   height: 32px;
