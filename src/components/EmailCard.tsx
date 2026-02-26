@@ -15,7 +15,7 @@ interface EmailCardProps {
   multiSelectedIds: Set<string>;
   sweepSeconds?: number;
   sweepAction?: string;
-  matchedSweepRule?: { action: string };
+  matchedSweepRule?: { action: string; delayHours: number };
   matchedStreams?: Array<{ id: string; accent: string }>;
 }
 
@@ -54,7 +54,15 @@ export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, 
     selectEmail(email.id, columnId || email.columnId, sourceAccountId || email.accountId);
   };
 
-  const hasSweep = sweepSeconds != null && sweepSeconds >= 0;
+  // Compute effective sweep countdown: prefer queue value, fall back to rule-based calculation
+  let effectiveSweepSeconds = sweepSeconds;
+  let effectiveSweepAction = sweepAction;
+  if (effectiveSweepSeconds == null && matchedSweepRule) {
+    const emailAgeSec = Math.floor((Date.now() - email.time) / 1000);
+    effectiveSweepSeconds = Math.max(0, matchedSweepRule.delayHours * 3600 - emailAgeSec);
+    effectiveSweepAction = matchedSweepRule.action === 'delete' || matchedSweepRule.action === 'keep_newest_delete' ? 'delete' : 'archive';
+  }
+  const hasSweep = effectiveSweepSeconds != null && effectiveSweepSeconds >= 0;
   const hasSweepRule = hasSweep || !!matchedSweepRule;
 
   return (
@@ -80,17 +88,9 @@ export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, 
       <div className="email-snippet">{email.snippet}</div>
       {hasSweep && (
         <div className="email-card-sweep-row">
-          <span className={`email-sweep-badge ${getCountdownClass(sweepSeconds)}`}>
+          <span className={`email-sweep-badge ${getCountdownClass(effectiveSweepSeconds)}`}>
             <Icons.Clock />
-            {sweepAction === 'delete' ? 'Delete' : 'Archive'} in {formatCountdown(sweepSeconds)}
-          </span>
-        </div>
-      )}
-      {!hasSweep && matchedSweepRule && (
-        <div className="email-card-sweep-row">
-          <span className="email-sweep-badge rule-matched">
-            <Icons.Sweep />
-            {matchedSweepRule.action === 'delete' || matchedSweepRule.action === 'keep_newest_delete' ? 'Delete' : 'Archive'} (sweep rule)
+            {effectiveSweepAction === 'delete' ? 'Delete' : 'Archive'} in {formatCountdown(effectiveSweepSeconds)}
           </span>
         </div>
       )}

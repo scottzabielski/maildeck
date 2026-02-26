@@ -24,9 +24,9 @@ export function Column({ column, dragControls, columnOrder = 0 }: ColumnProps) {
     [sweepRules]
   );
 
-  // Match each displayed email against enabled sweep rules → { action } for the soonest rule
+  // Match each displayed email against enabled sweep rules → { action, delayHours } for the soonest rule
   const sweepRuleMatchLookup = useMemo(() => {
-    const map = new Map<string, { action: string }>();
+    const map = new Map<string, { action: string; delayHours: number }>();
     if (enabledSweepRules.length === 0) return map;
     for (const email of emails) {
       let bestRule: { action: string; delayHours: number } | null = null;
@@ -37,7 +37,7 @@ export function Column({ column, dragControls, columnOrder = 0 }: ColumnProps) {
           }
         }
       }
-      if (bestRule) map.set(email.id, { action: bestRule.action });
+      if (bestRule) map.set(email.id, bestRule);
     }
     return map;
   }, [emails, enabledSweepRules]);
