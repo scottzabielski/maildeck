@@ -1,4 +1,4 @@
-import type { Criterion, Email } from '../types/index.ts';
+import type { Criterion, Email, Column } from '../types/index.ts';
 import { useStore } from '../store/index.ts';
 
 /**
@@ -18,6 +18,26 @@ import { useStore } from '../store/index.ts';
  *   - "startsWith" → case-insensitive prefix match
  *   - "endsWith" → case-insensitive suffix match
  */
+
+// Cached columns reference to avoid repeated useStore.getState() in hot loops
+let _cachedColumns: Column[] | null = null;
+
+function getColumns(): Column[] {
+  if (!_cachedColumns) _cachedColumns = useStore.getState().columns;
+  return _cachedColumns;
+}
+
+/**
+ * Call before a batch of emailMatchesCriteria calls to snapshot columns once,
+ * and after to release the reference.
+ */
+export function beginCriteriaMatch() {
+  _cachedColumns = useStore.getState().columns;
+}
+export function endCriteriaMatch() {
+  _cachedColumns = null;
+}
+
 export function emailMatchesCriteria(
   email: Email,
   criteria: Criterion[],
@@ -34,11 +54,16 @@ function emailMatchesCriteriaInternal(
 ): boolean {
   if (criteria.length === 0) return false;
 
-  const matches = criteria.map((c) => matchSingleCriterion(email, c, visitedStreams));
-
-  return logic === 'and'
-    ? matches.every(Boolean)
-    : matches.some(Boolean);
+  if (logic === 'and') {
+    for (const c of criteria) {
+      if (!matchSingleCriterion(email, c, visitedStreams)) return false;
+    }
+    return true;
+  }
+  for (const c of criteria) {
+    if (matchSingleCriterion(email, c, visitedStreams)) return true;
+  }
+  return false;
 }
 
 function matchSingleCriterion(
@@ -73,7 +98,7 @@ function matchSingleCriterion(
     case 'body':
       return matchOp(email.snippet.toLowerCase(), op, v);
     case 'stream': {
-      const cols = useStore.getState().columns;
+      const cols = getColumns();
       const target = cols.find(c => c.id === value || c.name.toLowerCase() === v);
       if (!target || target.criteria.length === 0) return false;
       if (visitedStreams?.has(target.id)) return false;

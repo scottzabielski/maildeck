@@ -3,7 +3,7 @@ import { motion, AnimatePresence, type DragControls } from 'framer-motion';
 import { Icons } from './ui/Icons.tsx';
 import { EmailCard } from './EmailCard.tsx';
 import { useStore } from '../store/index.ts';
-import { emailMatchesCriteria } from '../lib/emailFilter.ts';
+import { emailMatchesCriteria, beginCriteriaMatch, endCriteriaMatch } from '../lib/emailFilter.ts';
 import { scrollPositions } from '../lib/scrollPositions.ts';
 import { registerColumn, unregisterColumn } from '../lib/columnRegistry.ts';
 import type { Column as ColumnType } from '../types/index.ts';
@@ -28,6 +28,7 @@ export function Column({ column, dragControls, columnOrder = 0 }: ColumnProps) {
   const sweepRuleMatchLookup = useMemo(() => {
     const map = new Map<string, { action: string; delayHours: number }>();
     if (enabledSweepRules.length === 0) return map;
+    beginCriteriaMatch();
     for (const email of emails) {
       let bestRule: { action: string; delayHours: number } | null = null;
       for (const rule of enabledSweepRules) {
@@ -39,16 +40,20 @@ export function Column({ column, dragControls, columnOrder = 0 }: ColumnProps) {
       }
       if (bestRule) map.set(email.id, bestRule);
     }
+    endCriteriaMatch();
     return map;
   }, [emails, enabledSweepRules]);
 
   const columnEmails = useMemo(() => {
-    return emails.filter(e => {
+    beginCriteriaMatch();
+    const result = emails.filter(e => {
       if (disabledAccountIds.has(e.accountId)) return false;
       if (e.columnId) return e.columnId === column.id;
       if (column.criteria.length > 0) return emailMatchesCriteria(e, column.criteria, column.criteriaLogic);
       return false;
     });
+    endCriteriaMatch();
+    return result;
   }, [emails, column.id, column.criteria, column.criteriaLogic, disabledAccountIds]);
 
   const displayEmails = useMemo(() => {
@@ -63,9 +68,11 @@ export function Column({ column, dragControls, columnOrder = 0 }: ColumnProps) {
       );
     }
     if (globalFilters.has('no-sweep')) {
+      beginCriteriaMatch();
       filtered = filtered.filter(e =>
         !enabledSweepRules.some(rule => emailMatchesCriteria(e, rule.criteria, rule.criteriaLogic))
       );
+      endCriteriaMatch();
     }
     if (globalFilters.has('unread')) filtered = filtered.filter(e => e.unread);
     if (globalFilters.has('read')) filtered = filtered.filter(e => !e.unread);

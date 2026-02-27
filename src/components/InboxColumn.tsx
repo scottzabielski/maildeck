@@ -2,7 +2,7 @@ import { useMemo, useCallback, useRef, useEffect, useLayoutEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion';
 import { EmailCard } from './EmailCard.tsx';
 import { useStore } from '../store/index.ts';
-import { emailMatchesCriteria } from '../lib/emailFilter.ts';
+import { emailMatchesCriteria, beginCriteriaMatch, endCriteriaMatch } from '../lib/emailFilter.ts';
 import { scrollPositions } from '../lib/scrollPositions.ts';
 import { registerColumn, unregisterColumn } from '../lib/columnRegistry.ts';
 
@@ -57,6 +57,7 @@ export function InboxColumn({ accountId, columnOrder = 0 }: InboxColumnProps) {
   const sweepRuleMatchLookup = useMemo(() => {
     const map = new Map<string, { action: string; delayHours: number }>();
     if (enabledSweepRules.length === 0) return map;
+    beginCriteriaMatch();
     for (const email of columnEmails) {
       let bestRule: { action: string; delayHours: number } | null = null;
       for (const rule of enabledSweepRules) {
@@ -68,11 +69,13 @@ export function InboxColumn({ accountId, columnOrder = 0 }: InboxColumnProps) {
       }
       if (bestRule) map.set(email.id, bestRule);
     }
+    endCriteriaMatch();
     return map;
   }, [columnEmails, enabledSweepRules]);
 
   const matchedStreamsMap = useMemo(() => {
     const map = new Map<string, Array<{ id: string; accent: string }>>();
+    beginCriteriaMatch();
     for (const email of columnEmails) {
       const matched: Array<{ id: string; accent: string }> = [];
       for (const col of enabledStreams) {
@@ -84,15 +87,18 @@ export function InboxColumn({ accountId, columnOrder = 0 }: InboxColumnProps) {
         map.set(email.id, matched);
       }
     }
+    endCriteriaMatch();
     return map;
   }, [columnEmails, enabledStreams]);
 
   const displayEmails = useMemo(() => {
     if (globalFilters.size === 0) return columnEmails;
 
-    return columnEmails.filter(email => {
+    const needsSweepCheck = globalFilters.has('no-sweep');
+    if (needsSweepCheck) beginCriteriaMatch();
+    const result = columnEmails.filter(email => {
       if (globalFilters.has('no-stream') && matchedStreamsMap.has(email.id)) return false;
-      if (globalFilters.has('no-sweep') && enabledSweepRules.some(rule =>
+      if (needsSweepCheck && enabledSweepRules.some(rule =>
         emailMatchesCriteria(email, rule.criteria, rule.criteriaLogic)
       )) return false;
       if (globalFilters.has('unread') && !email.unread) return false;
@@ -100,6 +106,8 @@ export function InboxColumn({ accountId, columnOrder = 0 }: InboxColumnProps) {
       if (globalFilters.has('starred') && !email.starred) return false;
       return true;
     });
+    if (needsSweepCheck) endCriteriaMatch();
+    return result;
   }, [columnEmails, globalFilters, matchedStreamsMap, enabledSweepRules]);
 
   // Register column in the column registry for keyboard navigation
