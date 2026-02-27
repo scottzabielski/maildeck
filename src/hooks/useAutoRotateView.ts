@@ -11,30 +11,41 @@ export function useAutoRotateView() {
 
     let timer: ReturnType<typeof setTimeout>;
     let progressInterval: ReturnType<typeof setInterval>;
+    let disposed = false;
 
-    const resetTimer = () => {
+    const startCountdown = () => {
+      if (disposed) return;
       clearTimeout(timer);
       clearInterval(progressInterval);
-      setAutoRotateProgress(0);
 
       let ticks = 0;
+      setAutoRotateProgress(0);
       progressInterval = setInterval(() => {
+        if (disposed) return;
         ticks = Math.min(ticks + 1, 60);
         setAutoRotateProgress(ticks);
       }, 1000);
 
       timer = setTimeout(() => {
+        if (disposed) return;
         const state = useStore.getState();
         if (state.selectedEmail || state.highlightedEmail) {
-          resetTimer();
+          startCountdown();
           return;
         }
-        const current = useStore.getState().activeViewId;
+        const current = state.activeViewId;
         setActiveView(current === 'streams' ? 'inboxes' : 'streams');
       }, 60_000);
     };
 
-    resetTimer();
+    // Debounce user activity resets to avoid rapid-fire restarts
+    let debounceTimer: ReturnType<typeof setTimeout>;
+    const resetOnActivity = () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(startCountdown, 100);
+    };
+
+    startCountdown();
 
     // Reset timer when the view changes (manual switch via UI or keyboard)
     let prevViewId = useStore.getState().activeViewId;
@@ -42,20 +53,22 @@ export function useAutoRotateView() {
       const viewId = useStore.getState().activeViewId;
       if (viewId !== prevViewId) {
         prevViewId = viewId;
-        resetTimer();
+        startCountdown();
       }
     });
 
-    window.addEventListener('click', resetTimer);
-    window.addEventListener('keydown', resetTimer);
+    window.addEventListener('pointerdown', resetOnActivity);
+    window.addEventListener('keydown', resetOnActivity);
 
     return () => {
+      disposed = true;
       clearTimeout(timer);
+      clearTimeout(debounceTimer);
       clearInterval(progressInterval);
       setAutoRotateProgress(0);
       unsubscribe();
-      window.removeEventListener('click', resetTimer);
-      window.removeEventListener('keydown', resetTimer);
+      window.removeEventListener('pointerdown', resetOnActivity);
+      window.removeEventListener('keydown', resetOnActivity);
     };
   }, [autoRotateView, setActiveView, setAutoRotateProgress]);
 }
