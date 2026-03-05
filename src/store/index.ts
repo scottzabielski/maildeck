@@ -731,9 +731,17 @@ export const useStore = create<StoreState>((set, get) => ({
       // Build updated sweep list: replace existing items only if new rule is sooner
       const updatedSweep = [...s.sweepEmails];
       const newItems: SweepEmail[] = [];
+      const immediateIds: string[] = [];
       for (const e of toSweep) {
         const emailAgeSec = Math.floor((Date.now() - e.time) / 1000);
         const remainingSec = Math.max(0, delayHours * 3600 - emailAgeSec);
+
+        // Already past due — execute immediately instead of queuing with 0
+        if (remainingSec === 0) {
+          immediateIds.push(e.id);
+          continue;
+        }
+
         const existing = sweepMap.get(e.id);
         if (existing) {
           // Replace only if new rule sweeps sooner
@@ -745,7 +753,20 @@ export const useStore = create<StoreState>((set, get) => ({
           newItems.push({ id: e.id, accountId: e.accountId, sender: e.sender, subject: e.subject, sweepSeconds: remainingSec, exempted: false, action: terminalAction });
         }
       }
+
+      // Fire immediate actions outside the set() call
+      if (immediateIds.length > 0) {
+        setTimeout(() => {
+          for (const id of immediateIds) {
+            fireEmailAction(id, terminalAction as 'archive' | 'delete');
+          }
+        }, 0);
+      }
+
       return {
+        emails: immediateIds.length > 0
+          ? s.emails.filter(e => !immediateIds.includes(e.id))
+          : s.emails,
         sweepEmails: [...updatedSweep, ...newItems].sort((a, b) => a.sweepSeconds - b.sweepSeconds),
       };
     });
