@@ -207,7 +207,7 @@ export function InboxColumn({ accountId, columnOrder = 0 }: InboxColumnProps) {
             />
           ))}
         </AnimatePresence>
-        {_isFetchingNextPage && !searchQuery && <div className="column-load-more" />}
+        {_isFetchingNextPage && !searchQuery && displayEmails.length > 0 && <div className="column-load-more" />}
       </div>
     </motion.div>
   );
