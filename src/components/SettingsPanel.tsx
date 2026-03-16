@@ -7,6 +7,7 @@ import { useDeleteSweepRule } from '../hooks/useSweepRules.ts';
 import { useDeleteColumn } from '../hooks/useColumns.ts';
 import { useDeleteEmailAccount } from '../hooks/useEmailAccounts.ts';
 import { ConnectAccountFlow } from './settings/ConnectAccountFlow.tsx';
+import { connectGmailAccount, connectOutlookAccount } from '../lib/oauth.ts';
 import type { Account, Column as ColumnType, Criterion, SweepRule } from '../types/index.ts';
 
 function ruleMatchesSearch(name: string, criteria: Criterion[], query: string): boolean {
@@ -37,6 +38,7 @@ function SettingsAccountRow({ account }: { account: Account }) {
   const deleteMutation = useDeleteEmailAccount();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(account.name);
+  const [reconnecting, setReconnecting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -49,6 +51,26 @@ function SettingsAccountRow({ account }: { account: Account }) {
     else setDraft(account.name);
     setEditing(false);
   };
+
+  const needsReauth = account.syncStatus === 'error' && account.lastSyncedAt &&
+    Date.now() - new Date(account.lastSyncedAt).getTime() > 24 * 60 * 60 * 1000;
+
+  const handleReconnect = async () => {
+    setReconnecting(true);
+    try {
+      if (account.provider === 'Gmail') {
+        await connectGmailAccount();
+      } else {
+        await connectOutlookAccount();
+      }
+    } catch {
+      setReconnecting(false);
+    }
+  };
+
+  const statusLabel = account.syncStatus === 'error' ? 'error' :
+    account.syncStatus === 'syncing' ? 'syncing' :
+    account.syncStatus === 'never_synced' ? 'pending' : 'synced';
 
   return (
     <>
@@ -78,7 +100,16 @@ function SettingsAccountRow({ account }: { account: Account }) {
         )}
         <div className="settings-account-email">{account.email}</div>
       </div>
-      <span className="settings-account-status">synced</span>
+      <span className={`settings-account-status${needsReauth ? ' error' : ''}`}>{statusLabel}</span>
+      {needsReauth && (
+        <button
+          className="settings-account-reconnect"
+          disabled={reconnecting}
+          onClick={handleReconnect}
+        >
+          {reconnecting ? 'Redirecting...' : 'Reconnect'}
+        </button>
+      )}
       <button
         className="settings-account-remove"
         onClick={() => {
