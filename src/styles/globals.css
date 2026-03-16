@@ -566,7 +566,8 @@ button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 }
 
 .deck-layout--inboxes > .column {
-  flex: 1 0 var(--column-width);
+  flex: 1 1 0%;
+  min-width: 0;
   width: auto;
 }
 
