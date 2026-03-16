@@ -13,6 +13,7 @@ import { SweepRuleEditor } from './components/SweepRuleEditor.tsx';
 import { UndoToast } from './components/UndoToast.tsx';
 import { ColumnCriteriaEditor } from './components/ColumnCriteriaEditor.tsx';
 import { SettingsPanel } from './components/SettingsPanel.tsx';
+import { SyncErrorBanner } from './components/SyncErrorBanner.tsx';
 import { LoginPage } from './components/auth/LoginPage.tsx';
 import { OAuthCallback } from './components/auth/OAuthCallback.tsx';
 
@@ -168,8 +169,9 @@ function AppShell() {
   }
 
   return (
-    <>
+    <div className="app-shell">
       <TopBar />
+      <SyncErrorBanner />
       <DeckLayout />
       <ContextMenu />
       <ColumnContextMenu />
@@ -177,6 +179,6 @@ function AppShell() {
       <UndoToast />
       <ColumnCriteriaEditor />
       <SettingsPanel />
-    </>
+    </div>
   );
 }

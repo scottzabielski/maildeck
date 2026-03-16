@@ -148,6 +148,43 @@ button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
   position: relative;
 }
 
+.sync-error-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 16px;
+  background: var(--orange, #f59e0b);
+  color: #000;
+  font-size: 12px;
+  font-weight: 500;
+  flex-shrink: 0;
+  gap: 12px;
+}
+.sync-error-banner-text { flex: 1; }
+.sync-error-banner-actions { display: flex; gap: 8px; align-items: center; }
+.sync-error-banner-btn {
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(0,0,0,0.2);
+  background: rgba(255,255,255,0.25);
+  color: #000;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.sync-error-banner-btn:hover { background: rgba(255,255,255,0.4); }
+.sync-error-banner-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.sync-error-banner-dismiss {
+  background: none;
+  border: none;
+  color: rgba(0,0,0,0.5);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+.sync-error-banner-dismiss:hover { color: #000; }
+
 .topbar-logo {
   font-family: var(--font-display);
   font-weight: 700;
@@ -548,8 +585,16 @@ button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 /* ========================================
    DECK LAYOUT
    ======================================== */
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
 .deck-view-wrapper {
-  height: calc(100% - var(--topbar-height));
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -559,16 +604,16 @@ button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 
 .deck-layout {
   display: flex;
-  height: calc(100% - var(--topbar-height));
+  height: 100%;
   overflow: hidden;
   gap: 1px;
   background: var(--border-subtle);
 }
 
 .deck-layout--inboxes > .column {
-  flex: 1 1 0%;
-  min-width: 0;
-  width: auto;
+  flex: 1 1 0;
+  min-width: 0 !important;
+  width: 0;
 }
 
 .deck-layout--inboxes .column-header {

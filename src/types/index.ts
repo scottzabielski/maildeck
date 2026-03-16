@@ -4,6 +4,8 @@ export type Account = {
   email: string;
   color: string;
   provider: string;
+  syncStatus?: 'idle' | 'syncing' | 'error' | 'never_synced';
+  lastSyncedAt?: string | null;
 };
 
 export type View = {

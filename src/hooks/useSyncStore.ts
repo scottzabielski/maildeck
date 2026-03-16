@@ -105,6 +105,8 @@ export function useSyncStore() {
       email: a.email,
       color: a.color,
       provider: a.provider === 'gmail' ? 'Gmail' : 'Outlook',
+      syncStatus: a.sync_status,
+      lastSyncedAt: a.last_synced_at,
     }));
     useStore.setState({ accounts: mapped });
   }, [dbAccounts]);
