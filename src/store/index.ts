@@ -778,7 +778,8 @@ export const useStore = create<StoreState>((set, get) => ({
 
   removeSweepEmail: (emailId) => {
     const sweep = get().sweepEmails.find(e => e.id === emailId);
-    const action = sweep?.action === 'delete' ? 'delete' : 'archive';
+    if (!sweep) return; // Already removed by tickSweepCountdowns
+    const action = sweep.action === 'delete' ? 'delete' : 'archive';
     fireEmailAction(emailId, action);
     // Mark the sweep queue row as executed in Supabase so it doesn't reappear
     if (supabase) {
@@ -796,19 +797,45 @@ export const useStore = create<StoreState>((set, get) => ({
     }));
   },
 
-  tickSweepCountdowns: () => set(s => {
+  tickSweepCountdowns: () => {
+    const s = get();
+    const expired: { id: string; action: string }[] = [];
     const updated = s.sweepEmails.map(e => {
-      // Skip already-expiring cards
       if (e.expiring) return e;
       const next = Math.max(0, e.sweepSeconds - 1);
       if (next <= 0) {
-        // Transition to expiring — mark as read
         const email = s.emails.find(em => em.id === e.id);
         if (email?.unread) fireEmailAction(e.id, 'mark_read');
+        expired.push({ id: e.id, action: e.action || 'archive' });
         return { ...e, sweepSeconds: 0, expiring: true };
       }
       return { ...e, sweepSeconds: next };
     });
-    return { sweepEmails: updated };
-  }),
+    set({ sweepEmails: updated });
+
+    // Fire expired actions and remove from store after animation delay
+    if (expired.length > 0) {
+      for (const { id, action } of expired) {
+        fireEmailAction(id, action as 'archive' | 'delete');
+        if (supabase) {
+          supabase
+            .from('sweep_queue')
+            .update({ executed: true })
+            .eq('email_id', id)
+            .then(({ error }) => {
+              if (error) console.error('Failed to mark sweep item executed:', error);
+            });
+        }
+      }
+      // Remove from UI after brief animation
+      setTimeout(() => {
+        const expiredIds = expired.map(e => e.id);
+        set(s => ({
+          sweepEmails: s.sweepEmails.filter(e => !expiredIds.includes(e.id)),
+          emails: s.emails.filter(e => !expiredIds.includes(e.id)),
+          _pendingRemovals: new Set([...s._pendingRemovals, ...expiredIds]),
+        }));
+      }, 1000);
+    }
+  },
 }));
