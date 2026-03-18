@@ -7,17 +7,19 @@ export function DeckLayout() {
   const activeViewId = useStore(s => s.activeViewId);
 
   return (
-    <AnimatePresence mode="popLayout">
-      <motion.div
-        key={activeViewId}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.15 }}
-        className="deck-view-wrapper"
-      >
-        {activeViewId === 'inboxes' ? <InboxesLayout /> : <StreamsLayout />}
-      </motion.div>
-    </AnimatePresence>
+    <div className="deck-layout-container">
+      <AnimatePresence mode="popLayout">
+        <motion.div
+          key={activeViewId}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15 }}
+          className="deck-view-wrapper"
+        >
+          {activeViewId === 'inboxes' ? <InboxesLayout /> : <StreamsLayout />}
+        </motion.div>
+      </AnimatePresence>
+    </div>
   );
 }

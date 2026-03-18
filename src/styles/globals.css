@@ -592,9 +592,15 @@ button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
   overflow: hidden;
 }
 
-.deck-view-wrapper {
+.deck-layout-container {
   flex: 1;
   min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.deck-view-wrapper {
+  height: 100%;
   overflow: hidden;
 }
 
