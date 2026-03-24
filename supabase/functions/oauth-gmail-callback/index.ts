@@ -99,11 +99,37 @@ Deno.serve(async (req) => {
     const COLORS = ['#ea4335', '#34a853', '#4285f4', '#fbbc04', '#ff6d01', '#46bdc6'];
     const color = COLORS[nextSortOrder % COLORS.length];
 
-    // Upsert the email account (update tokens if account already exists)
-    const { data: upserted, error: upsertError } = await supabase
+    // Check if account already exists (reconnect vs new)
+    const { data: existingAccount } = await supabase
       .from('email_accounts')
-      .upsert(
-        {
+      .select('id')
+      .eq('user_id', userId)
+      .eq('email', email)
+      .maybeSingle();
+
+    let upserted: { id: string } | null = null;
+    let upsertError: unknown = null;
+
+    if (existingAccount) {
+      // Reconnect: only update tokens and sync status, preserve display_name/color/sort_order
+      const { data, error } = await supabase
+        .from('email_accounts')
+        .update({
+          access_token_encrypted: encAccessToken,
+          refresh_token_encrypted: encRefreshToken,
+          token_expires_at: expiresAt,
+          sync_status: 'never_synced',
+        })
+        .eq('id', existingAccount.id)
+        .select('id')
+        .single();
+      upserted = data;
+      upsertError = error;
+    } else {
+      // New account: insert with all fields
+      const { data, error } = await supabase
+        .from('email_accounts')
+        .insert({
           user_id: userId,
           provider: 'gmail',
           email,
@@ -115,11 +141,12 @@ Deno.serve(async (req) => {
           refresh_token_encrypted: encRefreshToken,
           token_expires_at: expiresAt,
           sync_status: 'never_synced',
-        },
-        { onConflict: 'user_id,email' },
-      )
-      .select('id')
-      .single();
+        })
+        .select('id')
+        .single();
+      upserted = data;
+      upsertError = error;
+    }
 
     if (upsertError) {
       console.error('Upsert failed:', upsertError);

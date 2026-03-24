@@ -100,8 +100,8 @@ function SettingsAccountRow({ account }: { account: Account }) {
         )}
         <div className="settings-account-email">{account.email}</div>
       </div>
-      <span className={`settings-account-status${needsReauth ? ' error' : ''}`}>{statusLabel}</span>
-      {needsReauth && (
+      <span className={`settings-account-status${account.syncStatus === 'error' ? ' error' : ''}`}>{statusLabel}</span>
+      {account.syncStatus === 'error' && (
         <button
           className="settings-account-reconnect"
           disabled={reconnecting}

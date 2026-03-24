@@ -233,7 +233,7 @@ export function TopBar() {
             key={a.id}
             value={a}
             as="button"
-            className={`account-badge ${disabledAccountIds.has(a.id) ? 'disabled' : ''}`}
+            className={`account-badge${disabledAccountIds.has(a.id) ? ' disabled' : ''}${a.syncStatus === 'error' ? ' sync-error' : ''}`}
             onClick={() => {
               if (draggedRef.current) {
                 draggedRef.current = false;
