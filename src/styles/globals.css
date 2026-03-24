@@ -677,6 +677,22 @@ button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
   flex-shrink: 0;
 }
 
+.column-refresh-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-sm);
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.column-refresh-btn:hover { color: var(--text-secondary); background: var(--bg-base); }
+.column-refresh-btn.syncing svg { animation: spin 0.8s linear infinite; }
+
 .column-name {
   font-family: var(--font-display);
   font-weight: 600;

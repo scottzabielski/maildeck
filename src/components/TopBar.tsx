@@ -2,7 +2,6 @@ import { useRef, useState, useCallback, useEffect } from 'react';
 import { Reorder } from 'framer-motion';
 import { Icons } from './ui/Icons.tsx';
 import { useStore } from '../store/index.ts';
-import { useSyncAccount } from '../hooks/useEmails.ts';
 
 function VolumeControl({ volume, onChange }: { volume: number; onChange: (v: number) => void }) {
   const prevVolumeRef = useRef(0.6);
@@ -76,9 +75,6 @@ export function TopBar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuBtnRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const syncMutation = useSyncAccount();
-  const [syncing, setSyncing] = useState(false);
-
   const handleSearchKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
       setSearchQuery('');
@@ -107,20 +103,6 @@ export function TopBar() {
     setMenuOpen(prev => !prev);
   }, []);
 
-  const handleRefresh = useCallback(async () => {
-    if (syncing) return;
-    setSyncing(true);
-    try {
-      await Promise.all(
-        accounts.map(a => syncMutation.mutateAsync({ accountId: a.id, mode: 'incremental' }))
-      );
-    } catch (e) {
-      console.error('Refresh sync error:', e);
-    } finally {
-      setSyncing(false);
-    }
-  }, [syncing, accounts, syncMutation]);
-
   return (
     <div className="topbar">
       <div className="topbar-logo">
@@ -140,12 +122,25 @@ export function TopBar() {
         ))}
       </div>
       <button
-        className={`topbar-refresh-btn${syncing ? ' syncing' : ''}`}
-        onClick={handleRefresh}
-        title="Refresh all inboxes"
-        disabled={syncing}
+        className={`topbar-rotate-btn${autoRotateView ? ' active' : ''}`}
+        onClick={toggleAutoRotateView}
+        title={autoRotateView ? 'Stop auto-rotate' : 'Auto-rotate views'}
       >
-        <Icons.Refresh />
+        {autoRotateView ? (() => {
+          const C = 2 * Math.PI * 7;
+          const filled = (autoRotateProgress / 60) * C;
+          return (
+            <svg width={16} height={16} viewBox="0 0 20 20">
+              <circle cx="10" cy="10" r="7" fill="none" stroke="var(--text-secondary)" strokeWidth="2" opacity="0.2" />
+              <circle cx="10" cy="10" r="7" fill="none" stroke="var(--blue)" strokeWidth="2"
+                strokeDasharray={`${filled} ${C - filled}`}
+                strokeDashoffset={C / 4}
+                strokeLinecap="round"
+                style={{ transition: 'stroke-dasharray 1s linear' }}
+              />
+            </svg>
+          );
+        })() : <Icons.Rotate />}
       </button>
       <div style={{ position: 'relative' }}>
         <button
@@ -250,27 +245,6 @@ export function TopBar() {
         ))}
       </Reorder.Group>
       <VolumeControl volume={soundVolume} onChange={setSoundVolume} />
-      <button
-        className={`topbar-rotate-btn${autoRotateView ? ' active' : ''}`}
-        onClick={toggleAutoRotateView}
-        title={autoRotateView ? 'Stop auto-rotate' : 'Auto-rotate views'}
-      >
-        {autoRotateView ? (() => {
-          const C = 2 * Math.PI * 7;
-          const filled = (autoRotateProgress / 60) * C;
-          return (
-            <svg width={16} height={16} viewBox="0 0 20 20">
-              <circle cx="10" cy="10" r="7" fill="none" stroke="var(--text-secondary)" strokeWidth="2" opacity="0.2" />
-              <circle cx="10" cy="10" r="7" fill="none" stroke="var(--blue)" strokeWidth="2"
-                strokeDasharray={`${filled} ${C - filled}`}
-                strokeDashoffset={C / 4}
-                strokeLinecap="round"
-                style={{ transition: 'stroke-dasharray 1s linear' }}
-              />
-            </svg>
-          );
-        })() : <Icons.Rotate />}
-      </button>
       <button className="settings-btn" onClick={toggleSettings}>
         <Icons.Settings />
       </button>

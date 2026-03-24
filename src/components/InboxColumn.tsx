@@ -1,7 +1,9 @@
-import { useMemo, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
+import { useMemo, useCallback, useRef, useState, useEffect, useLayoutEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { EmailCard } from './EmailCard.tsx';
+import { Icons } from './ui/Icons.tsx';
 import { useStore } from '../store/index.ts';
+import { useSyncAccount } from '../hooks/useEmails.ts';
 import { emailMatchesCriteria, beginCriteriaMatch, endCriteriaMatch } from '../lib/emailFilter.ts';
 import { scrollPositions } from '../lib/scrollPositions.ts';
 import { registerColumn, unregisterColumn } from '../lib/columnRegistry.ts';
@@ -13,6 +15,8 @@ interface InboxColumnProps {
 
 export function InboxColumn({ accountId, columnOrder = 0 }: InboxColumnProps) {
   const { emails, accounts, disabledAccountIds, selectedEmail, highlightedEmail, multiSelectedIds, sweepEmails, columns, sweepRules, searchQuery, globalFilters, _fetchNextPage, _hasNextPage, _isFetchingNextPage, _viewSwitchKey } = useStore();
+  const syncMutation = useSyncAccount();
+  const [syncing, setSyncing] = useState(false);
   const selectedEmailId = selectedEmail ? selectedEmail.emailId : null;
   const highlightedEmailId = highlightedEmail ? highlightedEmail.emailId : null;
 
@@ -124,9 +128,24 @@ export function InboxColumn({ accountId, columnOrder = 0 }: InboxColumnProps) {
 
   const account = accountId ? accounts.find(a => a.id === accountId) : null;
   const accent = account ? account.color : '#3b82f6';
+  const handleRefresh = useCallback(async () => {
+    if (syncing) return;
+    setSyncing(true);
+    try {
+      const targets = accountId ? [accountId] : accounts.map(a => a.id);
+      await Promise.all(
+        targets.map(id => syncMutation.mutateAsync({ accountId: id, mode: 'incremental' }))
+      );
+    } catch (e) {
+      console.error('Refresh sync error:', e);
+    } finally {
+      setSyncing(false);
+    }
+  }, [syncing, accountId, accounts, syncMutation]);
+
   const icon = account
     ? <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: account.color }} />
-    : '📥';
+    : <button className={`column-refresh-btn${syncing ? ' syncing' : ''}`} onClick={handleRefresh} title="Refresh all inboxes"><Icons.Refresh /></button>;
   const name = account ? account.name : 'All Inboxes';
   const unreadCount = displayEmails.filter(e => e.unread).length;
   const layoutKey = accountId ? 'inbox-' + accountId : 'inbox-all';
