@@ -172,7 +172,7 @@ export function SweepRuleEditor() {
       // Update in-memory store immediately
       updateSweepRule(ruleId, updates);
 
-      // Persist to DB and re-apply server-side
+      // Persist to DB
       if (!useMockData && user?.id) {
         try {
           await updateSweepRuleMutation.mutateAsync({
@@ -185,21 +185,21 @@ export function SweepRuleEditor() {
             action: selectedAction,
             delay_hours: effectiveDelay,
           });
-
-          // Re-apply the updated rule server-side against the full emails table
-          await applySweepRuleMutation.mutateAsync({
-            ruleId,
-            userId: user.id,
-            criteria: validCriteria,
-            criteriaLogic,
-            action: selectedAction,
-            delayHours: effectiveDelay,
-          }).catch(err => console.error('[Sweep] Edge function re-apply failed:', err));
         } catch (err) {
           console.error('[Sweep] Failed to update rule:', err);
           setError('Failed to save rule. Please try again.');
           return;
         }
+
+        // Re-apply the updated rule server-side (fire-and-forget)
+        applySweepRuleMutation.mutateAsync({
+          ruleId,
+          userId: user.id,
+          criteria: validCriteria,
+          criteriaLogic,
+          action: selectedAction,
+          delayHours: effectiveDelay,
+        }).catch(err => console.error('[Sweep] Edge function re-apply failed:', err));
       }
 
       // Immediate client-side feedback for loaded emails
