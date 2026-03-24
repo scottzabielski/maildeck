@@ -25,7 +25,7 @@ export function useAutoRotateView() {
 
       timer = setTimeout(() => {
         const state = useStore.getState();
-        if (state.selectedEmail || state.highlightedEmail) {
+        if (state.selectedEmail) {
           startCountdown();
           return;
         }
