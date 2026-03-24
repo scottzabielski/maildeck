@@ -2,8 +2,9 @@
 -- MailDeck: pg_cron Scheduled Jobs
 -- ========================================
 -- These jobs call Supabase Edge Functions via pg_net (HTTP).
--- Replace <PROJECT_REF> with your actual Supabase project reference.
--- Replace <SERVICE_ROLE_KEY> with your actual service role key.
+-- NOTE: The <PROJECT_REF> and <SERVICE_ROLE_KEY> placeholders below must be
+-- replaced with real values before running. If you've already set up these
+-- cron jobs via the Supabase SQL editor, this migration can be skipped.
 
 -- ========================================
 -- Enable Realtime for emails table

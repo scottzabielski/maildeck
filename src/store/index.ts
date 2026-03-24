@@ -22,8 +22,8 @@ const ACCOUNTS: Account[] = [
 ];
 
 const VIEWS: View[] = [
-  { id: 'streams', name: 'Streams' },
   { id: 'inboxes', name: 'Inboxes' },
+  { id: 'streams', name: 'Streams' },
 ];
 
 const COLUMNS: Column[] = [
@@ -279,7 +279,7 @@ export const useStore = create<StoreState>((set, get) => ({
   sweepEmails: useMockData ? SWEEP_EMAILS_INIT : [],
   views: VIEWS,
   sweepRules: useMockData ? SWEEP_RULES : [],
-  activeViewId: 'streams',
+  activeViewId: 'inboxes',
   disabledAccountIds: new Set<string>(),
   isSettingsOpen: false,
   settingsSection: 'accounts',
