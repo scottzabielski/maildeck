@@ -3,8 +3,6 @@ import { useStore } from '../store/index.ts';
 
 export function useAutoRotateView() {
   const autoRotateView = useStore(s => s.autoRotateView);
-  const setActiveView = useStore(s => s.setActiveView);
-  const setAutoRotateProgress = useStore(s => s.setAutoRotateProgress);
 
   useEffect(() => {
     if (!autoRotateView) return;
@@ -19,10 +17,10 @@ export function useAutoRotateView() {
       clearInterval(progressInterval);
 
       ticks = 0;
-      setAutoRotateProgress(0);
+      useStore.getState().setAutoRotateProgress(0);
       progressInterval = setInterval(() => {
         ticks = Math.min(ticks + 1, 60);
-        setAutoRotateProgress(ticks);
+        useStore.getState().setAutoRotateProgress(ticks);
       }, 1000);
 
       timer = setTimeout(() => {
@@ -32,7 +30,7 @@ export function useAutoRotateView() {
           return;
         }
         const current = state.activeViewId;
-        setActiveView(current === 'streams' ? 'inboxes' : 'streams');
+        useStore.getState().setActiveView(current === 'streams' ? 'inboxes' : 'streams');
       }, 60_000);
     };
 
@@ -63,10 +61,10 @@ export function useAutoRotateView() {
     return () => {
       clearTimeout(timer);
       clearInterval(progressInterval);
-      setAutoRotateProgress(0);
+      useStore.getState().setAutoRotateProgress(0);
       unsubscribe();
       window.removeEventListener('pointerdown', resetOnActivity);
       window.removeEventListener('keydown', resetOnActivity);
     };
-  }, [autoRotateView, setActiveView, setAutoRotateProgress]);
+  }, [autoRotateView]);
 }
