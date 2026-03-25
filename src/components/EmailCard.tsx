@@ -4,6 +4,13 @@ import { formatTime, formatCountdown, getCountdownClass } from '../lib/helpers.t
 import { Icons } from './ui/Icons.tsx';
 import type { Email, Account } from '../types/index.ts';
 
+const txtArea = typeof document !== 'undefined' ? document.createElement('textarea') : null;
+function decodeHTML(html: string): string {
+  if (!txtArea) return html;
+  txtArea.innerHTML = html;
+  return txtArea.value;
+}
+
 interface EmailCardProps {
   email: Email;
   accent: string;
@@ -84,12 +91,12 @@ export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, 
       data-email-id={email.id}
     >
       <div className="email-card-top">
-        <span className="email-sender">{email.sender}</span>
+        <span className="email-sender">{decodeHTML(email.sender)}</span>
         {email.starred && <span className="star-indicator">{'\u2605'}</span>}
         <span className="email-time">{formatTime(email.time)}</span>
       </div>
-      <div className="email-subject">{email.subject}</div>
-      <div className="email-snippet">{email.snippet}</div>
+      <div className="email-subject">{decodeHTML(email.subject)}</div>
+      <div className="email-snippet">{decodeHTML(email.snippet)}</div>
       {hasSweep && (
         <div className="email-card-sweep-row">
           <span className={`email-sweep-badge ${getCountdownClass(effectiveSweepSeconds)}`}>
