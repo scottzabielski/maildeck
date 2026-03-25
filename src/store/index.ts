@@ -568,11 +568,11 @@ export const useStore = create<StoreState>((set, get) => ({
   exemptSweepEmail: (emailId) => {
     const email = get().sweepEmails.find(e => e.id === emailId);
     if (!email) return;
-    // Delete from server so exempt persists across refresh
+    // Mark as executed on server so it won't be re-queued
     if (supabase) {
       supabase
         .from('sweep_queue')
-        .delete()
+        .update({ executed: true })
         .eq('email_id', emailId)
         .then(({ error }) => {
           if (error) console.error('Failed to exempt sweep email:', error);
@@ -732,7 +732,7 @@ export const useStore = create<StoreState>((set, get) => ({
     const isKeepNewest = action.startsWith('keep_newest_');
     const terminalAction = isKeepNewest ? action.replace('keep_newest_', '') : action;
     set(s => {
-      const matching = s.emails.filter(e => emailMatchesCriteria(e, criteria, criteriaLogic));
+      const matching = s.emails.filter(e => emailMatchesCriteria(e, criteria, criteriaLogic) && !s.exemptedEmailIds.has(e.id));
       const sweepMap = new Map(s.sweepEmails.map(e => [e.id, e]));
 
       let toSweep = matching;
