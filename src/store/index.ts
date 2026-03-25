@@ -272,6 +272,17 @@ function getInitialTheme(): string {
   try { return localStorage.getItem('maildeck-theme') || 'dark'; } catch { return 'dark'; }
 }
 
+function loadExemptions(): Set<string> {
+  try {
+    const raw = localStorage.getItem('maildeck-exempted-emails');
+    return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
+  } catch { return new Set(); }
+}
+
+function saveExemptions(ids: Set<string>) {
+  try { localStorage.setItem('maildeck-exempted-emails', JSON.stringify([...ids])); } catch { /* noop */ }
+}
+
 export const useStore = create<StoreState>((set, get) => ({
   theme: getInitialTheme(),
   accounts: useMockData ? ACCOUNTS : [],
@@ -301,7 +312,7 @@ export const useStore = create<StoreState>((set, get) => ({
   highlightedEmail: null,
   multiSelectedIds: new Set<string>(),
   lastClickedEmailId: null,
-  exemptedEmailIds: new Set<string>(),
+  exemptedEmailIds: loadExemptions(),
   _pendingRemovals: new Set<string>(),
   _viewSwitchKey: 0,
 
@@ -581,6 +592,7 @@ export const useStore = create<StoreState>((set, get) => ({
     set(s => {
       const exemptedEmailIds = new Set(s.exemptedEmailIds);
       exemptedEmailIds.add(emailId);
+      saveExemptions(exemptedEmailIds);
       return {
         sweepEmails: s.sweepEmails.filter(e => e.id !== emailId),
         exemptedEmailIds,
@@ -597,6 +609,7 @@ export const useStore = create<StoreState>((set, get) => ({
       set(s => {
         const exemptedEmailIds = new Set(s.exemptedEmailIds);
         exemptedEmailIds.delete(exempted.id);
+        saveExemptions(exemptedEmailIds);
         return {
           sweepEmails: [...s.sweepEmails, exempted].sort((a, b) => a.sweepSeconds - b.sweepSeconds),
           exemptedEmailIds,

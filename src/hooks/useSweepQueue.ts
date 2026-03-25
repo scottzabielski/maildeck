@@ -62,26 +62,6 @@ export function useSweepQueue(userId: string | undefined) {
 }
 
 /**
- * Fetch email IDs that have been exempted (executed) from sweep.
- */
-export function useSweepExemptions(userId: string | undefined) {
-  return useQuery({
-    queryKey: ['sweep_exemptions', userId],
-    queryFn: async () => {
-      if (!supabase || !userId) return [];
-      const { data, error } = await supabase
-        .from('sweep_queue')
-        .select('email_id')
-        .eq('user_id', userId)
-        .eq('executed', true);
-      if (error) throw error;
-      return (data || []).map((item: { email_id: string }) => item.email_id);
-    },
-    enabled: !!supabase && !!userId,
-  });
-}
-
-/**
  * Exempt (remove) a sweep queue item — cancels the pending sweep action.
  */
 export function useExemptSweepItem() {

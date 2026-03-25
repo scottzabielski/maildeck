@@ -6,7 +6,7 @@ import { useColumns, useReorderColumns, useCreateColumn, useUpdateColumn, useDel
 import { useSweepRules, useApplySweepRule } from './useSweepRules.ts';
 import { useEmailAccounts, useReorderEmailAccounts, useUpdateEmailAccount } from './useEmailAccounts.ts';
 import { useEmails, useSyncAccount } from './useEmails.ts';
-import { useSweepQueue, useSweepExemptions } from './useSweepQueue.ts';
+import { useSweepQueue } from './useSweepQueue.ts';
 import { useRealtime } from './useRealtime.ts';
 import { emailMatchesCriteria } from '../lib/emailFilter.ts';
 import type { Column, Account, SweepRule, SweepEmail, Email } from '../types/index.ts';
@@ -29,7 +29,6 @@ export function useSyncStore() {
   const { data: dbAccounts, isFetched: accountsFetched } = useEmailAccounts(useMockData ? undefined : userId);
   const { data: dbEmailPages, isFetched: emailsFetched, fetchNextPage, hasNextPage, isFetchingNextPage } = useEmails(useMockData ? undefined : userId);
   const { data: dbSweepQueue } = useSweepQueue(useMockData ? undefined : userId);
-  const { data: dbSweepExemptions } = useSweepExemptions(useMockData ? undefined : userId);
 
   const hydrated = useMockData || (accountsFetched && emailsFetched && columnsFetched);
 
@@ -198,18 +197,12 @@ export function useSyncStore() {
     useStore.setState({ sweepEmails: merged });
   }, [dbSweepQueue]);
 
-  // Sync exempted email IDs from server
-  useEffect(() => {
-    if (!dbSweepExemptions) return;
-    useStore.setState({ exemptedEmailIds: new Set(dbSweepExemptions) });
-  }, [dbSweepExemptions]);
-
   // One-time hydration: apply all enabled sweep rules on startup.
   // Runs client-side for immediate visual feedback on loaded emails,
   // and server-side to catch emails not yet loaded via pagination.
   useEffect(() => {
     if (useMockData || !userId || sweepHydrationDoneRef.current) return;
-    if (!dbSweepRules || dbSweepRules.length === 0 || !emailsFetched || !dbSweepExemptions) return;
+    if (!dbSweepRules || dbSweepRules.length === 0 || !emailsFetched) return;
 
     sweepHydrationDoneRef.current = true;
 
@@ -235,7 +228,7 @@ export function useSyncStore() {
         delayHours: rule.delay_hours,
       });
     }
-  }, [dbSweepRules, emailsFetched, userId, dbSweepExemptions]);
+  }, [dbSweepRules, emailsFetched, userId]);
 
   // Detect genuinely new emails (from sync/realtime) and evaluate sweep rules server-side.
   // Only watches the first page of the infinite query — pagination pages are historical
