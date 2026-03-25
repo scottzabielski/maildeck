@@ -184,6 +184,7 @@ export interface StoreState {
   highlightedEmail: HighlightedEmailState | null;
   multiSelectedIds: Set<string>;
   lastClickedEmailId: string | null;
+  exemptedEmailIds: Set<string>;
   _pendingRemovals: Set<string>;
   _viewSwitchKey: number;
 
@@ -300,6 +301,7 @@ export const useStore = create<StoreState>((set, get) => ({
   highlightedEmail: null,
   multiSelectedIds: new Set<string>(),
   lastClickedEmailId: null,
+  exemptedEmailIds: new Set<string>(),
   _pendingRemovals: new Set<string>(),
   _viewSwitchKey: 0,
 
@@ -576,20 +578,31 @@ export const useStore = create<StoreState>((set, get) => ({
           if (error) console.error('Failed to exempt sweep email:', error);
         });
     }
-    set(s => ({
-      sweepEmails: s.sweepEmails.filter(e => e.id !== emailId),
-      undoAction: { type: 'exempt', email, timestamp: Date.now() },
-    }));
+    set(s => {
+      const exemptedEmailIds = new Set(s.exemptedEmailIds);
+      exemptedEmailIds.add(emailId);
+      return {
+        sweepEmails: s.sweepEmails.filter(e => e.id !== emailId),
+        exemptedEmailIds,
+        undoAction: { type: 'exempt', email, timestamp: Date.now() },
+      };
+    });
   },
 
   undoLastAction: () => {
     const action = get().undoAction;
     if (!action) return;
     if (action.type === 'exempt') {
-      set(s => ({
-        sweepEmails: [...s.sweepEmails, action.email as SweepEmail].sort((a, b) => a.sweepSeconds - b.sweepSeconds),
-        undoAction: null,
-      }));
+      const exempted = action.email as SweepEmail;
+      set(s => {
+        const exemptedEmailIds = new Set(s.exemptedEmailIds);
+        exemptedEmailIds.delete(exempted.id);
+        return {
+          sweepEmails: [...s.sweepEmails, exempted].sort((a, b) => a.sweepSeconds - b.sweepSeconds),
+          exemptedEmailIds,
+          undoAction: null,
+        };
+      });
     } else if (action.type === 'archive') {
       const emailArr = Array.isArray(action.email) ? action.email as Email[] : [action.email as Email];
       const removals = new Set(get()._pendingRemovals);

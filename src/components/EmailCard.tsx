@@ -26,6 +26,7 @@ export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, 
   const toggleMultiSelect = useStore(s => s.toggleMultiSelect);
   const rangeSelect = useStore(s => s.rangeSelect);
   const clearMultiSelect = useStore(s => s.clearMultiSelect);
+  const isExempted = useStore(s => s.exemptedEmailIds.has(email.id));
   const account = accounts.find(a => a.id === email.accountId);
   const isHighlighted = highlightedEmailId === email.id;
   const isViewing = selectedEmailId === email.id;
@@ -57,7 +58,7 @@ export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, 
   // Compute effective sweep countdown: prefer queue value, fall back to rule-based calculation
   let effectiveSweepSeconds = sweepSeconds;
   let effectiveSweepAction = sweepAction;
-  if (effectiveSweepSeconds == null && matchedSweepRule) {
+  if (effectiveSweepSeconds == null && matchedSweepRule && !isExempted) {
     const emailAgeSec = Math.floor((Date.now() - email.time) / 1000);
     const remaining = matchedSweepRule.delayHours * 3600 - emailAgeSec;
     if (remaining > 0) {
@@ -66,7 +67,7 @@ export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, 
     }
   }
   const hasSweep = effectiveSweepSeconds != null && effectiveSweepSeconds > 0;
-  const hasSweepRule = hasSweep || !!matchedSweepRule;
+  const hasSweepRule = hasSweep || (!!matchedSweepRule && !isExempted);
 
   return (
     <motion.div
