@@ -98,7 +98,7 @@ export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, 
           </span>
         </div>
       )}
-      {!hasSweep && matchedSweepRule && (
+      {!hasSweep && matchedSweepRule && !isExempted && (
         <div className="email-card-sweep-row">
           <span className="email-sweep-badge rule-matched">
             <Icons.Sweep />
