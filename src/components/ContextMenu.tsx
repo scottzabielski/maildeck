@@ -3,7 +3,7 @@ import { Icons } from './ui/Icons.tsx';
 import { useStore } from '../store/index.ts';
 
 export function ContextMenu() {
-  const { contextMenu, closeContextMenu, emails, columns, toggleRead, toggleStar, archiveEmail, deleteEmail, moveToSweep, openSweepRuleEditor, openStreamEditorFromEmail, openCriteriaEditorWithPrefill, multiSelectedIds, archiveSelected, deleteSelected, markSelectedRead, markSelectedUnread } = useStore();
+  const { contextMenu, closeContextMenu, emails, columns, sweepEmails, toggleRead, toggleStar, archiveEmail, deleteEmail, moveToSweep, exemptSweepEmail, openSweepRuleEditor, openStreamEditorFromEmail, openCriteriaEditorWithPrefill, multiSelectedIds, archiveSelected, deleteSelected, markSelectedRead, markSelectedUnread } = useStore();
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -79,6 +79,7 @@ export function ContextMenu() {
       {item(Icons.Star, email.starred ? 'Unstar' : 'Star', () => toggleStar(email.id))}
       {item(Icons.Archive, 'Archive', () => archiveEmail(email.id))}
       {item(Icons.Sweep, 'Move to Sweep', () => moveToSweep(email.id))}
+      {sweepEmails.some(s => s.id === email.id) && item(Icons.Sweep, 'Exempt from Sweep', () => exemptSweepEmail(email.id))}
       {item(Icons.Trash, 'Delete', () => deleteEmail(email.id), true)}
       <div className="context-menu-separator" />
       {item(Icons.Sweep, 'Create Sweep Rule\u2026', () => {
