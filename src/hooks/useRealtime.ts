@@ -28,45 +28,57 @@ export function useRealtime(userId: string | undefined) {
       }, delay);
     };
 
-    const channel = supabase
-      .channel('db-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'emails',
-          filter: `user_id=eq.${userId}`,
-        },
-        () => {
-          debouncedInvalidate(['emails', userId], 'emails', 2000);
-        },
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'sweep_queue',
-          filter: `user_id=eq.${userId}`,
-        },
-        () => {
-          debouncedInvalidate(['sweep_queue', userId], 'sweep_queue', 1000);
-        },
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'email_accounts',
-          filter: `user_id=eq.${userId}`,
-        },
-        () => {
-          debouncedInvalidate(['email_accounts', userId], 'email_accounts', 1000);
-        },
-      )
-      .subscribe();
+    let channel: ReturnType<typeof supabase.channel>;
+
+    const subscribe = () => {
+      channel = supabase!
+        .channel('db-changes')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'emails',
+            filter: `user_id=eq.${userId}`,
+          },
+          () => {
+            debouncedInvalidate(['emails', userId], 'emails', 2000);
+          },
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'sweep_queue',
+            filter: `user_id=eq.${userId}`,
+          },
+          () => {
+            debouncedInvalidate(['sweep_queue', userId], 'sweep_queue', 1000);
+          },
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'email_accounts',
+            filter: `user_id=eq.${userId}`,
+          },
+          () => {
+            debouncedInvalidate(['email_accounts', userId], 'email_accounts', 1000);
+          },
+        )
+        .subscribe((status) => {
+          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            console.warn(`Realtime channel ${status}, reconnecting in 5s…`);
+            supabase!.removeChannel(channel);
+            setTimeout(subscribe, 5000);
+          }
+        });
+    };
+
+    subscribe();
 
     return () => {
       // Clear all pending debounce timers

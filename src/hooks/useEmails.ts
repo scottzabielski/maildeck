@@ -53,11 +53,7 @@ export function useEmails(userId: string | undefined) {
       return lastPage[lastPage.length - 1].received_at;
     },
     enabled: !!supabase && !!userId,
-    refetchInterval: (query) => {
-      // Only auto-refetch the first page
-      const pageCount = query.state.data?.pages?.length ?? 0;
-      return pageCount <= 1 ? 30000 : false;
-    },
+    refetchInterval: 30000,
   });
 }
 
