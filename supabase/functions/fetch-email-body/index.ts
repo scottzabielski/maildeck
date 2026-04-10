@@ -1,5 +1,6 @@
 import { createAdminClient } from '../_shared/supabase-admin.ts';
 import { corsHeaders } from '../_shared/cors.ts';
+import { AuthError, requireUser } from '../_shared/auth.ts';
 
 /**
  * Fetch the full HTML/text body of an email on demand.
@@ -14,19 +15,31 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { email_id } = await req.json() as { email_id: string };
-    if (!email_id) {
+    let userId: string;
+    try {
+      userId = await requireUser(req);
+    } catch (err) {
+      if (err instanceof AuthError) return jsonResponse({ error: err.message }, err.status);
+      throw err;
+    }
+
+    const body = (await req.json().catch(() => ({}))) as { email_id?: unknown };
+    if (typeof body.email_id !== 'string' || body.email_id.length === 0) {
       return jsonResponse({ error: 'Missing email_id' }, 400);
     }
+    const email_id: string = body.email_id;
 
     const supabase = createAdminClient();
 
-    // Fetch email row with account info
+    // Fetch email row with account info.
+    // The user_id filter enforces ownership — a caller cannot read
+    // another user's email body by supplying its id.
     const { data: email, error: emailErr } = await supabase
       .from('emails')
       .select('id, provider_message_id, account_id, body_html, body_text')
       .eq('id', email_id)
-      .single();
+      .eq('user_id', userId)
+      .maybeSingle();
 
     if (emailErr || !email) {
       return jsonResponse({ error: 'Email not found' }, 404);
@@ -45,7 +58,8 @@ Deno.serve(async (req) => {
       .from('email_accounts')
       .select('id, provider, access_token_encrypted, refresh_token_encrypted, token_expires_at')
       .eq('id', email.account_id)
-      .single();
+      .eq('user_id', userId)
+      .maybeSingle();
 
     if (acctErr || !account) {
       return jsonResponse({ error: 'Account not found' }, 404);
@@ -72,11 +86,12 @@ Deno.serve(async (req) => {
       bodyText = result.text;
     }
 
-    // Cache in database
+    // Cache in database — re-assert user_id for defense in depth.
     await supabase
       .from('emails')
       .update({ body_html: bodyHtml, body_text: bodyText })
-      .eq('id', email_id);
+      .eq('id', email_id)
+      .eq('user_id', userId);
 
     return jsonResponse({ body_html: bodyHtml, body_text: bodyText });
   } catch (err) {

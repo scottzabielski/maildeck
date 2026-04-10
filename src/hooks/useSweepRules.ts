@@ -1,6 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase.ts';
-import type { Criterion } from '../types/index.ts';
 
 export interface DbSweepRule {
   id: string;
@@ -145,6 +144,10 @@ export function useDeleteSweepRule() {
 /**
  * Calls the apply-sweep-rule Edge Function to evaluate criteria against
  * the full emails table server-side and batch-insert matches into sweep_queue.
+ *
+ * The function reads criteria/action/delay from the DB row itself; the
+ * client only needs to supply the rule id (plus the user id for cache
+ * invalidation, which never leaves the client).
  */
 export function useApplySweepRule() {
   const queryClient = useQueryClient();
@@ -152,18 +155,9 @@ export function useApplySweepRule() {
   return useMutation({
     mutationFn: async ({
       ruleId,
-      userId,
-      criteria,
-      criteriaLogic,
-      action,
-      delayHours,
     }: {
       ruleId: string;
       userId: string;
-      criteria: Criterion[];
-      criteriaLogic: 'and' | 'or';
-      action: string;
-      delayHours: number;
     }) => {
       if (!supabase) throw new Error('Supabase not configured');
 
@@ -171,20 +165,15 @@ export function useApplySweepRule() {
       if (!session) throw new Error('No active session');
 
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
       const res = await fetch(`${supabaseUrl}/functions/v1/apply-sweep-rule`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          apikey: supabaseAnonKey,
           Authorization: `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({
-          rule_id: ruleId,
-          user_id: userId,
-          criteria,
-          criteria_logic: criteriaLogic,
-          action,
-          delay_hours: delayHours,
-        }),
+        body: JSON.stringify({ rule_id: ruleId }),
       });
 
       if (!res.ok) {

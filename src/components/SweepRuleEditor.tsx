@@ -191,14 +191,12 @@ export function SweepRuleEditor() {
           return;
         }
 
-        // Re-apply the updated rule server-side (fire-and-forget)
+        // Re-apply the updated rule server-side (fire-and-forget).
+        // The function reads criteria/action/delay from the DB row, so we
+        // only need to pass the rule id here.
         applySweepRuleMutation.mutateAsync({
           ruleId,
           userId: user.id,
-          criteria: validCriteria,
-          criteriaLogic,
-          action: selectedAction,
-          delayHours: effectiveDelay,
         }).catch(err => console.error('[Sweep] Edge function re-apply failed:', err));
       }
 
@@ -237,15 +235,12 @@ export function SweepRuleEditor() {
         return;
       }
 
-      // 2. Apply rule server-side against the full emails table
+      // 2. Apply rule server-side against the full emails table.
+      // The function reads criteria/action/delay from the DB row.
       try {
         await applySweepRuleMutation.mutateAsync({
           ruleId: createdRule.id,
           userId,
-          criteria: validCriteria,
-          criteriaLogic,
-          action: selectedAction,
-          delayHours: effectiveDelay,
         });
       } catch (err) {
         console.error('[Sweep] Edge function apply failed:', err);

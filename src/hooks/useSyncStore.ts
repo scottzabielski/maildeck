@@ -3,7 +3,7 @@ import { useStore } from '../store/index.ts';
 import { useAuth } from './useAuth.ts';
 import { useProfile, useUpdateProfile } from './useProfile.ts';
 import { useColumns, useReorderColumns, useCreateColumn, useUpdateColumn, useDeleteColumn } from './useColumns.ts';
-import { useSweepRules, useApplySweepRule } from './useSweepRules.ts';
+import { useSweepRules } from './useSweepRules.ts';
 import { useEmailAccounts, useReorderEmailAccounts, useUpdateEmailAccount } from './useEmailAccounts.ts';
 import { useEmails, useSyncAccount } from './useEmails.ts';
 import { useSweepQueue } from './useSweepQueue.ts';
@@ -46,9 +46,6 @@ export function useSyncStore() {
 
   // Track previous email IDs for new-arrival detection
   const prevEmailIdsRef = useRef<Set<string> | null>(null);
-  const applySweepRuleMutation = useApplySweepRule();
-  // Track whether we've done the one-time hydration sweep pass
-  const sweepHydrationDoneRef = useRef(false);
 
   // Subscribe to Supabase Realtime for live updates
   useRealtime(useMockData ? undefined : userId);
@@ -197,42 +194,14 @@ export function useSyncStore() {
     useStore.setState({ sweepEmails: merged });
   }, [dbSweepQueue]);
 
-  // One-time hydration: apply all enabled sweep rules on startup.
-  // Runs client-side for immediate visual feedback on loaded emails,
-  // and server-side to catch emails not yet loaded via pagination.
-  useEffect(() => {
-    if (useMockData || !userId || sweepHydrationDoneRef.current) return;
-    if (!dbSweepRules || dbSweepRules.length === 0 || !emailsFetched) return;
-
-    sweepHydrationDoneRef.current = true;
-
-    const enabledRules = dbSweepRules.filter(r => r.is_enabled);
-    const { applySweepAction } = useStore.getState();
-
-    for (const rule of enabledRules) {
-      const criteria = rule.criteria || (rule.sender_pattern ? [{ field: 'from', op: 'contains', value: rule.sender_pattern }] : []);
-      if (criteria.length === 0) continue;
-
-      const criteriaLogic = rule.criteria_logic || 'and';
-
-      // Immediate client-side: tag loaded emails that match
-      applySweepAction(criteria, criteriaLogic, rule.action, rule.delay_hours);
-
-      // Server-side: queue ALL matching emails (including unloaded ones)
-      applySweepRuleMutation.mutate({
-        ruleId: rule.id,
-        userId,
-        criteria,
-        criteriaLogic,
-        action: rule.action,
-        delayHours: rule.delay_hours,
-      });
-    }
-  }, [dbSweepRules, emailsFetched, userId]);
-
-  // Detect genuinely new emails (from sync/realtime) and evaluate sweep rules server-side.
-  // Only watches the first page of the infinite query — pagination pages are historical
-  // data already covered by the hydration effect.
+  // New-email client tagging: when genuinely new emails arrive via
+  // realtime/sync, tag them locally so their sweep countdown badge
+  // appears instantly. Server-side queue insertion is handled by the
+  // apply_sweep_rules_on_insert() DB trigger (migrations 009/013/014),
+  // so we only do the local store update here — no edge-function call.
+  //
+  // Only watches the first page of the infinite query — pagination pages
+  // are historical data the trigger already processed on insert.
   const firstPage = dbEmailPages?.pages?.[0];
   useEffect(() => {
     if (useMockData || !firstPage || !userId) return;
@@ -261,18 +230,10 @@ export function useSyncStore() {
       const newMatches = newEmails.filter(e => emailMatchesCriteria(e, rule.criteria, rule.criteriaLogic));
       if (newMatches.length === 0) continue;
 
-      // Immediate client-side: add to sweep queue with countdown right away
+      // Local-only: tag matching new emails so the countdown badge
+      // appears immediately, before the sweep_queue realtime sub
+      // round-trips the server-inserted row back to us.
       applySweepAction(rule.criteria, rule.criteriaLogic, rule.action, rule.delayHours);
-
-      // Server-side: queue matching emails in sweep_queue table
-      applySweepRuleMutation.mutate({
-        ruleId: rule.id,
-        userId,
-        criteria: rule.criteria,
-        criteriaLogic: rule.criteriaLogic,
-        action: rule.action,
-        delayHours: rule.delayHours,
-      });
     }
   }, [firstPage, userId]);
 

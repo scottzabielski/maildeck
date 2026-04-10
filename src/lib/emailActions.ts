@@ -1,6 +1,7 @@
 import { supabase } from './supabase.ts';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 const useMockData = import.meta.env.VITE_USE_MOCK_DATA === 'true';
 
 type Action = 'archive' | 'unarchive' | 'delete' | 'mark_read' | 'mark_unread' | 'star' | 'unstar';
@@ -21,6 +22,7 @@ export async function fireEmailAction(emailId: string, action: Action): Promise<
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        apikey: SUPABASE_ANON_KEY,
         Authorization: `Bearer ${session.access_token}`,
       },
       body: JSON.stringify({ action, email_id: emailId }),

@@ -364,6 +364,57 @@ deno_version = 2
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
+# ============================================================
+# Edge function per-function settings
+# ============================================================
+# Every function disables the edge runtime's `verify_jwt` gateway. Per-user
+# endpoints (apply-sweep-rule, email-actions, fetch-email-body) call
+# requireUser() from _shared/auth.ts to validate the JWT in code; the rest
+# either run under the service role (called by pg_cron) or accept
+# unauthenticated callers on purpose (oauth callbacks, provider webhooks).
+#
+# We make these explicit because a prior dashboard/repo drift turned
+# verify_jwt on for apply-sweep-rule and caused a silent 6-week outage
+# where no sweep_queue rows were ever inserted. Keep these declarations so
+# the repo is the source of truth and `supabase functions deploy` resets
+# the dashboard value on every deploy.
+
+[functions.apply-sweep-rule]
+verify_jwt = false
+
+[functions.email-actions]
+verify_jwt = false
+
+[functions.fetch-email-body]
+verify_jwt = false
+
+[functions.sync-emails]
+verify_jwt = false
+
+[functions.sweep-execute]
+verify_jwt = false
+
+[functions.oauth-config]
+verify_jwt = false
+
+[functions.oauth-gmail-callback]
+verify_jwt = false
+
+[functions.oauth-outlook-callback]
+verify_jwt = false
+
+[functions.webhook-gmail]
+verify_jwt = false
+
+[functions.webhook-outlook]
+verify_jwt = false
+
+[functions.push-subscribe]
+verify_jwt = false
+
+[functions.token-refresh]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

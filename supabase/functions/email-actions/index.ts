@@ -1,7 +1,16 @@
 import { createAdminClient } from '../_shared/supabase-admin.ts';
 import { corsHeaders } from '../_shared/cors.ts';
+import { AuthError, requireUser } from '../_shared/auth.ts';
 
 type Action = 'archive' | 'unarchive' | 'delete' | 'mark_read' | 'mark_unread' | 'star' | 'unstar';
+
+const VALID_ACTIONS: ReadonlySet<Action> = new Set([
+  'archive', 'unarchive', 'delete', 'mark_read', 'mark_unread', 'star', 'unstar',
+]);
+
+function isValidAction(x: unknown): x is Action {
+  return typeof x === 'string' && VALID_ACTIONS.has(x as Action);
+}
 
 /**
  * Email actions Edge Function.
@@ -17,23 +26,39 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { action, email_id } = (await req.json()) as {
-      action: Action;
-      email_id: string;
+    let userId: string;
+    try {
+      userId = await requireUser(req);
+    } catch (err) {
+      if (err instanceof AuthError) return jsonResponse({ error: err.message }, err.status);
+      throw err;
+    }
+
+    const body = (await req.json().catch(() => ({}))) as {
+      action?: unknown;
+      email_id?: unknown;
     };
 
-    if (!action || !email_id) {
-      return jsonResponse({ error: 'Missing action or email_id' }, 400);
+    if (!isValidAction(body.action)) {
+      return jsonResponse({ error: 'Invalid or missing action' }, 400);
     }
+    if (typeof body.email_id !== 'string' || body.email_id.length === 0) {
+      return jsonResponse({ error: 'Missing email_id' }, 400);
+    }
+    const action: Action = body.action;
+    const email_id: string = body.email_id;
 
     const supabase = createAdminClient();
 
-    // Fetch the email with its account info
+    // Fetch the email with its account info.
+    // The user_id filter enforces ownership — a caller cannot act on
+    // someone else's email by supplying its id.
     const { data: email, error: emailError } = await supabase
       .from('emails')
       .select('id, account_id, provider_message_id, is_unread, is_starred, is_archived, is_deleted')
       .eq('id', email_id)
-      .single();
+      .eq('user_id', userId)
+      .maybeSingle();
 
     if (emailError || !email) {
       return jsonResponse({ error: 'Email not found' }, 404);
@@ -43,18 +68,23 @@ Deno.serve(async (req) => {
       .from('email_accounts')
       .select('id, provider, access_token_encrypted, token_expires_at')
       .eq('id', email.account_id)
-      .single();
+      .eq('user_id', userId)
+      .maybeSingle();
 
     if (accountError || !account) {
       return jsonResponse({ error: 'Account not found' }, 404);
     }
 
-    // Update local DB first
+    // Update local DB first — the user_id filter is belt-and-suspenders:
+    // the select above already verified ownership, but re-asserting it on
+    // the update protects against any racing that could change ownership
+    // between the two statements.
     const dbUpdates = getDbUpdates(action);
     await supabase
       .from('emails')
       .update(dbUpdates)
-      .eq('id', email_id);
+      .eq('id', email_id)
+      .eq('user_id', userId);
 
     // Decrypt access token
     const { data: accessToken } = await supabase.rpc('decrypt_token', {

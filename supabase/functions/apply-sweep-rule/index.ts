@@ -1,5 +1,6 @@
 import { createAdminClient } from '../_shared/supabase-admin.ts';
 import { corsHeaders } from '../_shared/cors.ts';
+import { AuthError, requireUser } from '../_shared/auth.ts';
 
 interface Criterion {
   field: string;
@@ -14,7 +15,11 @@ interface Criterion {
  * paginated client-side emails) and batch-inserts matching email IDs
  * into sweep_queue.
  *
- * Accepts: POST { rule_id, user_id, criteria, criteria_logic, action, delay_hours }
+ * Accepts: POST { rule_id }
+ * The user_id is derived from the JWT — callers cannot target another
+ * user. criteria / criteria_logic / action / delay_hours are read from
+ * the rule row in the DB, NOT the request body, so a caller holding a
+ * legitimate rule_id cannot substitute their own criteria or actions.
  * Returns: { queued: N }
  */
 Deno.serve(async (req) => {
@@ -23,27 +28,65 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const {
-      rule_id,
-      user_id,
-      criteria,
-      criteria_logic,
-      action,
-      delay_hours,
-    } = (await req.json()) as {
-      rule_id: string;
-      user_id: string;
-      criteria: Criterion[];
-      criteria_logic: 'and' | 'or';
-      action: string;
-      delay_hours: number;
-    };
+    let user_id: string;
+    try {
+      user_id = await requireUser(req);
+    } catch (err) {
+      if (err instanceof AuthError) return jsonResponse({ error: err.message }, err.status);
+      throw err;
+    }
 
-    if (!user_id || !rule_id || !criteria || criteria.length === 0) {
-      return jsonResponse({ error: 'Missing required fields' }, 400);
+    const body = (await req.json().catch(() => ({}))) as { rule_id?: string };
+    const rule_id = body.rule_id;
+    if (!rule_id || typeof rule_id !== 'string') {
+      return jsonResponse({ error: 'Missing rule_id' }, 400);
     }
 
     const admin = createAdminClient();
+
+    // Load the rule and verify ownership in a single query. Filtering by
+    // (id, user_id) means callers cannot distinguish "rule does not
+    // exist" from "rule belongs to someone else" — both return 404.
+    const { data: ruleRow, error: ruleErr } = await admin
+      .from('sweep_rules')
+      .select('id, criteria, criteria_logic, action, delay_hours, sender_pattern, is_enabled')
+      .eq('id', rule_id)
+      .eq('user_id', user_id)
+      .maybeSingle();
+    if (ruleErr || !ruleRow) {
+      return jsonResponse({ error: 'Rule not found' }, 404);
+    }
+    if (!ruleRow.is_enabled) {
+      return jsonResponse({ error: 'Rule is disabled' }, 409);
+    }
+
+    // Derive matcher inputs exclusively from the DB row.
+    // sweep_rules.criteria is jsonb, typed as unknown by the Supabase
+    // client — narrow and shape-check before treating it as Criterion[].
+    let criteria: Criterion[] = Array.isArray(ruleRow.criteria)
+      ? (ruleRow.criteria as unknown[]).filter(
+          (c): c is Criterion =>
+            !!c && typeof c === 'object' &&
+            typeof (c as Criterion).field === 'string' &&
+            typeof (c as Criterion).op === 'string' &&
+            typeof (c as Criterion).value === 'string',
+        )
+      : [];
+    const criteria_logic: 'and' | 'or' = ruleRow.criteria_logic === 'or' ? 'or' : 'and';
+    const action: string = ruleRow.action;
+    const delay_hours: number = Number(ruleRow.delay_hours);
+    if (!Number.isFinite(delay_hours) || delay_hours < 0) {
+      return jsonResponse({ error: 'Invalid delay_hours on rule' }, 500);
+    }
+
+    // Fall back to legacy sender_pattern if criteria is empty — matches
+    // the behavior of apply_sweep_rules_on_insert() in migration 009.
+    if (criteria.length === 0) {
+      if (!ruleRow.sender_pattern) {
+        return jsonResponse({ queued: 0 });
+      }
+      criteria = [{ field: 'from', op: 'contains', value: ruleRow.sender_pattern }];
+    }
 
     // Resolve stream criteria: if any criterion uses field="stream",
     // load the referenced column's criteria and flatten them
