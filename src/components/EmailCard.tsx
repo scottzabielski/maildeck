@@ -99,9 +99,9 @@ export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, 
       <div className="email-snippet">{decodeHTML(email.snippet)}</div>
       {hasSweep && (
         <div className="email-card-sweep-row">
-          <span className={`email-sweep-badge ${getCountdownClass(effectiveSweepSeconds)}`}>
+          <span className={`email-sweep-badge ${getCountdownClass(effectiveSweepSeconds!)}`}>
             <Icons.Clock />
-            {effectiveSweepAction === 'delete' ? 'Delete' : 'Archive'} in {formatCountdown(effectiveSweepSeconds)}
+            {effectiveSweepAction === 'delete' ? 'Delete' : 'Archive'} in {formatCountdown(effectiveSweepSeconds!)}
           </span>
         </div>
       )}

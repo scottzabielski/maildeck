@@ -38,10 +38,9 @@ export function UndoToast() {
     moveToSweep: 'moved to sweep',
   };
   const msg = undoMessages[undoAction.type] || 'removed';
-  const isBatch = Array.isArray(undoAction.email);
-  const label = isBatch
-    ? `${(undoAction.email as Array<{subject: string}>).length} emails`
-    : `"${undoAction.email.subject}"`;
+  const label = Array.isArray(undoAction.email)
+    ? `${undoAction.email.length} emails`
+    : `"${(undoAction.email as { subject: string }).subject}"`;
 
   return (
     <div className="undo-toast" key={undoAction.timestamp}>

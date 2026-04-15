@@ -638,8 +638,9 @@ export const useStore = create<StoreState>((set, get) => ({
       // Note: undelete is not straightforward with providers, so we unarchive
       for (const e of emailArr) fireEmailAction(e.id, 'unarchive');
     } else if (action.type === 'moveToSweep') {
+      const target = action.email as { id: string };
       set(s => ({
-        sweepEmails: s.sweepEmails.filter(e => e.id !== action.email.id),
+        sweepEmails: s.sweepEmails.filter(e => e.id !== target.id),
         undoAction: null,
       }));
     }
