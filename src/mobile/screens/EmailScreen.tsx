@@ -11,7 +11,7 @@ interface EmailScreenProps {
   nav: MobileNav;
 }
 
-export function EmailScreen({ nav }: EmailScreenProps) {
+export function EmailScreen({ nav: _nav }: EmailScreenProps) {
   const selectedEmail = useStore(s => s.selectedEmail);
   const emails = useStore(s => s.emails);
   const accounts = useStore(s => s.accounts);
@@ -32,19 +32,13 @@ export function EmailScreen({ nav }: EmailScreenProps) {
   const email = emails.find(e => e.id === emailId);
   const { data: body, isLoading: bodyLoading } = useEmailBody(emailId);
 
+  // Clear the selection; MobileAppShell's effect watches selectedEmailId and
+  // pops the email frame off the nav stack when it goes null. Calling
+  // nav.pop() here too would double-pop and walk us out of the app's
+  // synthetic history entry.
   const handleBack = useCallback(() => {
     deselectEmail();
-    nav.pop();
-  }, [deselectEmail, nav]);
-
-  // If the selected email is cleared from elsewhere (e.g. archive from inside
-  // the screen, or another action), pop back automatically.
-  useEffect(() => {
-    if (!selectedEmail) {
-      nav.pop();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedEmail]);
+  }, [deselectEmail]);
 
   const resizeIframe = useCallback(() => {
     const iframe = iframeRef.current;
