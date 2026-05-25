@@ -881,23 +881,27 @@ body.is-mobile {
   transform: translateX(18px);
 }
 
-/* ===== Search overlay ===== */
+/* ===== Search bar =====
+ * Inline replacement for the screen's top bar — not a full-screen wash —
+ * so the live-filtered email list below stays visible while you type.
+ */
 .mobile-search-overlay {
-  position: fixed;
-  inset: 0;
-  background: var(--bg-base);
-  z-index: 50;
+  flex: 0 0 auto;
+  width: 100%;
+  background: var(--bg-raised);
   display: flex;
   flex-direction: column;
   padding-top: env(safe-area-inset-top);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .mobile-search-bar {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 8px;
-  border-bottom: 1px solid var(--border-subtle);
+  padding: 8px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .mobile-search-back {
@@ -931,7 +935,8 @@ body.is-mobile {
   outline: none;
   color: var(--text-primary);
   font: inherit;
-  font-size: 15px;
+  /* 16px is the minimum that prevents iOS Safari from auto-zooming on focus. */
+  font-size: 16px;
   min-width: 0;
 }
 
@@ -951,11 +956,61 @@ body.is-mobile {
   cursor: pointer;
 }
 
-.mobile-search-hint {
-  padding: 16px;
-  font-size: 13px;
+/* Account-toggle strip rendered below the search bar so the user can
+ * narrow/widen the search to specific mailboxes inline. */
+.mobile-search-accounts {
+  display: flex;
+  flex: 0 0 auto;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  padding: 6px 8px 8px;
+  gap: 6px;
+  align-items: center;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.mobile-search-accounts::-webkit-scrollbar {
+  display: none;
+}
+
+.mobile-search-account {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 14px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
   color: var(--text-tertiary);
-  text-align: center;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+  opacity: 0.55;
+}
+
+.mobile-search-account.on {
+  background: var(--bg-raised);
+  color: var(--text-primary);
+  border-color: var(--border-medium);
+  opacity: 1;
+}
+
+.mobile-search-account:active {
+  opacity: 0.7;
+}
+
+.mobile-search-account-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
 /* Highlight the icon when the matching filter is active */
@@ -1157,7 +1212,8 @@ button.mobile-settings-row:active {
   border-radius: 6px;
   padding: 6px 8px;
   font: inherit;
-  font-size: 14px;
+  /* 16px prevents iOS Safari from zooming on focus. */
+  font-size: 16px;
   color: var(--text-primary);
 }
 
@@ -1288,7 +1344,8 @@ button.mobile-settings-row:active {
   border-radius: 6px;
   padding: 6px 8px;
   font: inherit;
-  font-size: 13px;
+  /* 16px prevents iOS Safari from zooming when the dropdown opens. */
+  font-size: 16px;
   color: var(--text-primary);
   min-height: 36px;
 }
@@ -1389,7 +1446,8 @@ button.mobile-settings-row:active {
   border-radius: 8px;
   padding: 12px;
   font: inherit;
-  font-size: 15px;
+  /* 16px prevents iOS Safari from zooming on focus. */
+  font-size: 16px;
   color: var(--text-primary);
   min-height: 44px;
 }

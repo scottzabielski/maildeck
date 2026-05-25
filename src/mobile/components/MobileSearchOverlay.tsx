@@ -10,6 +10,9 @@ interface MobileSearchOverlayProps {
 export function MobileSearchOverlay({ open, onClose }: MobileSearchOverlayProps) {
   const searchQuery = useStore(s => s.searchQuery);
   const setSearchQuery = useStore(s => s.setSearchQuery);
+  const accounts = useStore(s => s.accounts);
+  const disabledAccountIds = useStore(s => s.disabledAccountIds);
+  const toggleAccount = useStore(s => s.toggleAccount);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -56,12 +59,33 @@ export function MobileSearchOverlay({ open, onClose }: MobileSearchOverlayProps)
           )}
         </div>
       </div>
-      <div className="mobile-search-hint">
-        {searchQuery
-          ? <>Showing results across your current view.</>
-          : <>Type to search across emails in the current view.</>
-        }
-      </div>
+
+      {/* Account toggle strip — tap any account to enable/disable it. Disabled
+          accounts are dimmed; tapping re-enables. Live filters the list below. */}
+      {accounts.length > 0 && (
+        <div className="mobile-search-accounts">
+          {accounts.map(a => {
+            const enabled = !disabledAccountIds.has(a.id);
+            return (
+              <button
+                key={a.id}
+                type="button"
+                className={`mobile-search-account${enabled ? ' on' : ''}`}
+                onClick={() => toggleAccount(a.id)}
+                aria-pressed={enabled}
+                title={enabled ? `Hide ${a.name}` : `Show ${a.name}`}
+              >
+                <span
+                  className="mobile-search-account-dot"
+                  style={{ background: a.color }}
+                  aria-hidden
+                />
+                <span className="mobile-search-account-name">{a.name}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

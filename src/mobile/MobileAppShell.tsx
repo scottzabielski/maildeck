@@ -91,8 +91,8 @@ export default function MobileAppShell() {
   );
 }
 
-function renderScreen(frame: MobileFrame, nav: MobileNav) {
-  switch (frame.type) {
+function renderScreen(frame: MobileFrame | undefined, nav: MobileNav) {
+  switch (frame?.type) {
     case 'streams':
       return <StreamsScreen nav={nav} />;
     case 'email':

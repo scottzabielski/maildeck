@@ -30,6 +30,10 @@ export function useMobileNavStack<F extends ScreenFrame>(initial: F): MobileNavA
   stackRef.current = stack;
 
   const ownedEntriesRef = useRef(0);
+  // When `pop()` itself fires history.back(), the browser will emit a
+  // popstate event we shouldn't react to (we already popped the stack).
+  // This counter lets the popstate handler swallow the events we caused.
+  const suppressNextPopstateRef = useRef(0);
 
   const push = useCallback((frame: F) => {
     setStack(prev => [...prev, frame]);
@@ -43,6 +47,7 @@ export function useMobileNavStack<F extends ScreenFrame>(initial: F): MobileNavA
     setStack(prev => (prev.length > 1 ? prev.slice(0, -1) : prev));
     if (ownedEntriesRef.current > 0) {
       ownedEntriesRef.current -= 1;
+      suppressNextPopstateRef.current += 1;
       try { window.history.back(); } catch { /* noop */ }
     }
   }, []);
@@ -58,6 +63,12 @@ export function useMobileNavStack<F extends ScreenFrame>(initial: F): MobileNavA
 
   useEffect(() => {
     const handler = () => {
+      // If this popstate was triggered by our own pop()→history.back(), the
+      // stack and ref counters are already updated — swallow it.
+      if (suppressNextPopstateRef.current > 0) {
+        suppressNextPopstateRef.current -= 1;
+        return;
+      }
       if (stackRef.current.length > 1) {
         setStack(prev => prev.slice(0, -1));
         if (ownedEntriesRef.current > 0) ownedEntriesRef.current -= 1;

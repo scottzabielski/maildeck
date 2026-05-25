@@ -223,6 +223,8 @@ export function StreamsScreen({ nav: _nav }: StreamsScreenProps) {
     <div className="mobile-screen">
       {multiCount > 0 ? (
         <MobileMultiSelectBar visibleEmailIds={visibleIds} />
+      ) : searchOpen ? (
+        <MobileSearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} />
       ) : (
       <>
       <MobileTopBar
@@ -273,13 +275,14 @@ export function StreamsScreen({ nav: _nav }: StreamsScreenProps) {
       />
       </>
       )}
-      <MobileSearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} />
       <MobileFiltersSheet open={filtersOpen} onClose={() => setFiltersOpen(false)} />
       <div className="mobile-list-wrap">
         <PullIndicator pullDistance={pullDistance} refreshing={refreshing} armed={armed} />
         <div className="mobile-list" ref={scrollRef} onScroll={handleScroll} style={{
-          transform: pullDistance > 0 && !refreshing ? `translateY(${pullDistance}px)` : undefined,
-          transition: pullDistance === 0 ? 'transform 0.2s ease-out' : 'none',
+          // While pulling or refreshing, push the list down so the indicator
+          // has its own band above the first row instead of sitting over it.
+          transform: refreshing ? 'translateY(44px)' : pullDistance > 0 ? `translateY(${pullDistance}px)` : undefined,
+          transition: pullDistance === 0 && !refreshing ? 'transform 0.2s ease-out' : 'none',
         }}>
           {isSweep ? (
             filteredSweepEmails.length === 0 ? (
