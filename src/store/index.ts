@@ -188,6 +188,12 @@ export interface StoreState {
   _pendingRemovals: Set<string>;
   _viewSwitchKey: number;
 
+  // Mobile-only selection state (ignored by the desktop UI)
+  mobileInboxSelected: string | null;
+  mobileStreamSelected: string | null;
+  setMobileInboxSelected: (id: string | null) => void;
+  setMobileStreamSelected: (id: string | null) => void;
+
   setActiveView: (viewId: string) => void;
   setTheme: (theme: string) => void;
   toggleAccount: (accountId: string) => void;
@@ -315,6 +321,10 @@ export const useStore = create<StoreState>((set, get) => ({
   exemptedEmailIds: loadExemptions(),
   _pendingRemovals: new Set<string>(),
   _viewSwitchKey: 0,
+  mobileInboxSelected: null,
+  mobileStreamSelected: null,
+  setMobileInboxSelected: (id) => set({ mobileInboxSelected: id }),
+  setMobileStreamSelected: (id) => set({ mobileStreamSelected: id }),
 
   setActiveView: (viewId) => set(s => ({ activeViewId: viewId, selectedEmail: null, highlightedEmail: null, _viewSwitchKey: s._viewSwitchKey + 1 })),
   setTheme: (theme) => {

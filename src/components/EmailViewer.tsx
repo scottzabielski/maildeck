@@ -4,6 +4,7 @@ import { Icons } from './ui/Icons.tsx';
 import { useStore } from '../store/index.ts';
 import { useEmailBody } from '../hooks/useEmailBody.ts';
 import { formatCountdown, getCountdownClass } from '../lib/helpers.ts';
+import { buildEmailIframeDoc } from '../lib/emailIframe.ts';
 
 export function EmailViewer() {
   const { selectedEmail, emails, accounts, sweepEmails, deselectEmail, toggleStar, toggleRead, archiveEmail, deleteEmail, openSweepRuleEditor } = useStore();
@@ -30,41 +31,7 @@ export function EmailViewer() {
     const theme = document.documentElement.getAttribute('data-theme') || 'dark';
     const isDark = theme === 'dark';
 
-    const doc = `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-  *, *::before, *::after { box-sizing: border-box; }
-  body {
-    margin: 0;
-    padding: 0;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    font-size: 14px;
-    line-height: 1.6;
-    color: ${isDark ? '#d1d5db' : '#374151'};
-    background: transparent;
-    word-wrap: break-word;
-    overflow-wrap: break-word;
-  }
-  a { color: ${isDark ? '#60a5fa' : '#2563eb'}; }
-  img { max-width: 100%; height: auto; }
-  table { max-width: 100% !important; }
-  pre, code { white-space: pre-wrap; word-wrap: break-word; }
-  blockquote {
-    border-left: 3px solid ${isDark ? '#4b5563' : '#d1d5db'};
-    margin: 8px 0;
-    padding: 4px 12px;
-    color: ${isDark ? '#9ca3af' : '#6b7280'};
-  }
-</style>
-</head>
-<body>${body.body_html}</body>
-<script>document.querySelectorAll('a[href]').forEach(a => { a.target = '_blank'; a.rel = 'noopener noreferrer'; });</script>
-</html>`;
-
-    iframe.srcdoc = doc;
+    iframe.srcdoc = buildEmailIframeDoc({ bodyHtml: body.body_html, isDark });
 
     const onLoad = () => {
       resizeIframe();

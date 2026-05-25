@@ -1,10 +1,10 @@
-import { useEffect } from 'react';
+import { lazy, Suspense } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useStore } from './store/index.ts';
 import { useAuth } from './hooks/useAuth.ts';
-import { useSyncStore } from './hooks/useSyncStore.ts';
+import { useAppInfrastructure } from './hooks/useAppInfrastructure.ts';
 import { useKeyboardNav } from './hooks/useKeyboardNav.ts';
 import { useAutoRotateView } from './hooks/useAutoRotateView.ts';
+import { useDeviceLayout } from './hooks/useDeviceLayout.ts';
 import { TopBar } from './components/TopBar.tsx';
 import { DeckLayout } from './components/DeckLayout.tsx';
 import { ContextMenu } from './components/ContextMenu.tsx';
@@ -17,6 +17,8 @@ import { SyncErrorBanner } from './components/SyncErrorBanner.tsx';
 import { LoginPage } from './components/auth/LoginPage.tsx';
 import { OAuthCallback } from './components/auth/OAuthCallback.tsx';
 
+const MobileAppShell = lazy(() => import('./mobile/MobileAppShell.tsx'));
+
 const useMockData = import.meta.env.VITE_USE_MOCK_DATA === 'true';
 
 const queryClient = new QueryClient({
@@ -28,6 +30,20 @@ const queryClient = new QueryClient({
   },
 });
 
+const LoadingScreen = () => (
+  <div style={{
+    height: '100vh',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: 'var(--bg-base)',
+    color: 'var(--text-secondary)',
+    fontSize: '14px',
+  }}>
+    Loading...
+  </div>
+);
+
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -38,6 +54,7 @@ export function App() {
 
 function AppRouter() {
   const { user, loading } = useAuth();
+  const layout = useDeviceLayout();
 
   // Show auth callback handler
   if (!useMockData && window.location.pathname === '/auth/callback') {
@@ -51,18 +68,14 @@ function AppRouter() {
 
   // Show loading spinner while checking auth
   if (!useMockData && loading) {
+    return <LoadingScreen />;
+  }
+
+  if (layout === 'mobile') {
     return (
-      <div style={{
-        height: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'var(--bg-base)',
-        color: 'var(--text-secondary)',
-        fontSize: '14px',
-      }}>
-        Loading...
-      </div>
+      <Suspense fallback={<LoadingScreen />}>
+        <MobileAppShell />
+      </Suspense>
     );
   }
 
@@ -70,103 +83,15 @@ function AppRouter() {
 }
 
 function AppShell() {
-  const tickSweepCountdowns = useStore(s => s.tickSweepCountdowns);
-  const addNewEmail = useStore(s => s.addNewEmail);
-  const theme = useStore(s => s.theme);
-
-  // Keyboard navigation (arrow keys, Enter, Escape)
+  // Keyboard navigation (arrow keys, Enter, Escape) — desktop only
   useKeyboardNav();
 
-  // Auto-rotate between Streams and Inboxes views
+  // Auto-rotate between Streams and Inboxes views — desktop only
   useAutoRotateView();
 
-  // Sync Supabase data → Zustand store
-  const { hydrated, persistTheme, persistSweepDelay, persistColumnReorder, persistColumnCreate, persistColumnUpdate, persistColumnDelete, persistAccountReorder, persistAccountRename } = useSyncStore();
+  const { hydrated } = useAppInfrastructure();
 
-  // Handle OAuth provider redirect (e.g. /settings/accounts?connected=gmail)
-  useEffect(() => {
-    const path = window.location.pathname;
-    const params = new URLSearchParams(window.location.search);
-    if (path === '/settings/accounts' && (params.has('connected') || params.has('error'))) {
-      useStore.setState({ isSettingsOpen: true, settingsSection: 'accounts' });
-      // Clean up the URL
-      window.history.replaceState({}, '', '/');
-    }
-  }, []);
-
-  // Expose persist helpers on the store for settings panel to use
-  useEffect(() => {
-    useStore.setState({
-      _persistTheme: persistTheme,
-      _persistSweepDelay: persistSweepDelay,
-      _persistColumnReorder: persistColumnReorder,
-      _persistColumnCreate: persistColumnCreate,
-      _persistColumnUpdate: persistColumnUpdate,
-      _persistColumnDelete: persistColumnDelete,
-      _persistAccountReorder: persistAccountReorder,
-      _persistAccountRename: persistAccountRename,
-    });
-  }, [persistTheme, persistSweepDelay, persistColumnReorder, persistColumnCreate, persistColumnUpdate, persistColumnDelete, persistAccountReorder, persistAccountRename]);
-
-  // Apply theme to document
-  useEffect(() => {
-    const apply = (resolved: string) => document.documentElement.setAttribute('data-theme', resolved);
-    if (theme === 'system') {
-      const mq = window.matchMedia('(prefers-color-scheme: dark)');
-      apply(mq.matches ? 'dark' : 'light');
-      const handler = (e: MediaQueryListEvent) => apply(e.matches ? 'dark' : 'light');
-      mq.addEventListener('change', handler);
-      return () => mq.removeEventListener('change', handler);
-    }
-    apply(theme);
-  }, [theme]);
-
-  // Tick sweep countdowns every second
-  useEffect(() => {
-    const interval = setInterval(tickSweepCountdowns, 1000);
-    return () => clearInterval(interval);
-  }, [tickSweepCountdowns]);
-
-  // Simulate new email arrivals periodically (only in mock mode)
-  useEffect(() => {
-    if (!useMockData) return;
-
-    const newEmailTemplates = [
-      { columnId: 'github', accountId: 'channel1', sender: 'renovate[bot]', subject: 'Update dependency @types/node to v20.11.5', snippet: 'This PR contains the following updates...', unread: true },
-      { columnId: 'team', accountId: 'syzmail', sender: 'Amy Chen', subject: 'Quick sync on API design', snippet: 'Hey, wanted to run a few things by you about the...', unread: true },
-      { columnId: 'newsletters', accountId: 'szabielski', sender: 'Hacker News Digest', subject: 'Top stories today', snippet: 'Show HN: I built a real-time collaborative...', unread: true },
-      { columnId: 'clients', accountId: 'scottz', sender: 'Diana Frost (Apex)', subject: 'Partnership proposal', snippet: 'We\'ve been evaluating your platform and would like to...', unread: true },
-    ];
-    let idx = 0;
-    const interval = setInterval(() => {
-      const template = newEmailTemplates[idx % newEmailTemplates.length];
-      addNewEmail({
-        ...template,
-        id: `new-${Date.now()}`,
-        time: Date.now(),
-        starred: false,
-      });
-      idx++;
-    }, 15000); // every 15 seconds
-
-    return () => clearInterval(interval);
-  }, [addNewEmail]);
-
-  if (!hydrated) {
-    return (
-      <div style={{
-        height: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'var(--bg-base)',
-        color: 'var(--text-secondary)',
-        fontSize: '14px',
-      }}>
-        Loading...
-      </div>
-    );
-  }
+  if (!hydrated) return <LoadingScreen />;
 
   return (
     <div className="app-shell">

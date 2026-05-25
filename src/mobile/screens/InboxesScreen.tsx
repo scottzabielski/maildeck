@@ -1,0 +1,323 @@
+import { useMemo, useRef, useCallback, useLayoutEffect, useEffect, useState } from 'react';
+import { Icons } from '../../components/ui/Icons.tsx';
+import { useStore } from '../../store/index.ts';
+import { emailMatchesCriteria, beginCriteriaMatch, endCriteriaMatch } from '../../lib/emailFilter.ts';
+import { scrollPositions } from '../../lib/scrollPositions.ts';
+import { useSyncAccount } from '../../hooks/useEmails.ts';
+import { MobileTopBar } from '../components/MobileTopBar.tsx';
+import { MobileSegmentedPicker, type SegmentedPickerOption } from '../components/MobileSegmentedPicker.tsx';
+import { MobileEmailListItem } from '../components/MobileEmailListItem.tsx';
+import { MobileSearchOverlay } from '../components/MobileSearchOverlay.tsx';
+import { MobileFiltersSheet } from '../components/MobileFiltersSheet.tsx';
+import { MobileAccountsSheet } from '../components/MobileAccountsSheet.tsx';
+import { MobileMultiSelectBar } from '../components/MobileMultiSelectBar.tsx';
+import { usePullToRefresh } from '../hooks/usePullToRefresh.ts';
+import type { MobileNav } from '../navTypes.ts';
+
+interface InboxesScreenProps {
+  nav: MobileNav;
+}
+
+export function InboxesScreen({ nav: _nav }: InboxesScreenProps) {
+  const emails = useStore(s => s.emails);
+  const accounts = useStore(s => s.accounts);
+  const disabledAccountIds = useStore(s => s.disabledAccountIds);
+  const sweepEmails = useStore(s => s.sweepEmails);
+  const columns = useStore(s => s.columns);
+  const sweepRules = useStore(s => s.sweepRules);
+  const searchQuery = useStore(s => s.searchQuery);
+  const globalFilters = useStore(s => s.globalFilters);
+  const _fetchNextPage = useStore(s => s._fetchNextPage);
+  const _hasNextPage = useStore(s => s._hasNextPage);
+  const _isFetchingNextPage = useStore(s => s._isFetchingNextPage);
+  const mobileInboxSelected = useStore(s => s.mobileInboxSelected);
+  const setMobileInboxSelected = useStore(s => s.setMobileInboxSelected);
+  const toggleSettings = useStore(s => s.toggleSettings);
+
+  const enabledAccounts = useMemo(
+    () => accounts.filter(a => !disabledAccountIds.has(a.id)),
+    [accounts, disabledAccountIds],
+  );
+
+  // Ensure selected account is still enabled; if not, drop back to "All".
+  useEffect(() => {
+    if (mobileInboxSelected && !enabledAccounts.some(a => a.id === mobileInboxSelected)) {
+      setMobileInboxSelected(null);
+    }
+  }, [mobileInboxSelected, enabledAccounts, setMobileInboxSelected]);
+
+  const accountId = mobileInboxSelected; // null = All Inboxes
+  const account = accountId ? accounts.find(a => a.id === accountId) ?? null : null;
+  const accent = account ? account.color : '#3b82f6';
+
+  // === Filter logic (mirrors src/components/InboxColumn.tsx) ===
+  const columnEmails = useMemo(() => {
+    const q = searchQuery.toLowerCase();
+    let filtered;
+    if (accountId) {
+      filtered = emails.filter(e => e.accountId === accountId && !disabledAccountIds.has(e.accountId));
+    } else {
+      filtered = emails.filter(e => !disabledAccountIds.has(e.accountId));
+    }
+    if (q) {
+      filtered = filtered.filter(e =>
+        e.sender.toLowerCase().includes(q)
+        || (e.senderEmail || '').toLowerCase().includes(q)
+        || e.subject.toLowerCase().includes(q)
+        || e.snippet.toLowerCase().includes(q)
+      );
+    }
+    return [...filtered].sort((a, b) => b.time - a.time);
+  }, [emails, accountId, disabledAccountIds, searchQuery]);
+
+  const sweepLookup = useMemo(() => {
+    const map = new Map<string, { seconds: number; action: string }>();
+    for (const s of sweepEmails) {
+      map.set(s.id, { seconds: s.sweepSeconds, action: s.action || 'archive' });
+    }
+    return map;
+  }, [sweepEmails]);
+
+  const enabledStreams = useMemo(
+    () => columns.filter(c => c.enabled !== false && c.criteria.length > 0),
+    [columns],
+  );
+
+  const enabledSweepRules = useMemo(
+    () => sweepRules.filter(r => r.enabled),
+    [sweepRules],
+  );
+
+  const sweepRuleMatchLookup = useMemo(() => {
+    const map = new Map<string, { action: string; delayHours: number }>();
+    if (enabledSweepRules.length === 0) return map;
+    beginCriteriaMatch();
+    for (const email of columnEmails) {
+      let bestRule: { action: string; delayHours: number } | null = null;
+      for (const rule of enabledSweepRules) {
+        if (emailMatchesCriteria(email, rule.criteria, rule.criteriaLogic)) {
+          if (!bestRule || rule.delayHours < bestRule.delayHours) {
+            bestRule = { action: rule.action, delayHours: rule.delayHours };
+          }
+        }
+      }
+      if (bestRule) map.set(email.id, bestRule);
+    }
+    endCriteriaMatch();
+    return map;
+  }, [columnEmails, enabledSweepRules]);
+
+  const matchedStreamsMap = useMemo(() => {
+    const map = new Map<string, Array<{ id: string; accent: string }>>();
+    beginCriteriaMatch();
+    for (const email of columnEmails) {
+      const matched: Array<{ id: string; accent: string }> = [];
+      for (const col of enabledStreams) {
+        if (emailMatchesCriteria(email, col.criteria, col.criteriaLogic)) {
+          matched.push({ id: col.id, accent: col.accent });
+        }
+      }
+      if (matched.length > 0) map.set(email.id, matched);
+    }
+    endCriteriaMatch();
+    return map;
+  }, [columnEmails, enabledStreams]);
+
+  const displayEmails = useMemo(() => {
+    if (globalFilters.size === 0) return columnEmails;
+    const needsSweepCheck = globalFilters.has('no-sweep');
+    if (needsSweepCheck) beginCriteriaMatch();
+    const result = columnEmails.filter(email => {
+      if (globalFilters.has('no-stream') && matchedStreamsMap.has(email.id)) return false;
+      if (needsSweepCheck && enabledSweepRules.some(rule =>
+        emailMatchesCriteria(email, rule.criteria, rule.criteriaLogic)
+      )) return false;
+      if (globalFilters.has('unread') && !email.unread) return false;
+      if (globalFilters.has('read') && email.unread) return false;
+      if (globalFilters.has('starred') && !email.starred) return false;
+      return true;
+    });
+    if (needsSweepCheck) endCriteriaMatch();
+    return result;
+  }, [columnEmails, globalFilters, matchedStreamsMap, enabledSweepRules]);
+
+  // === Segmented picker options ===
+  const pickerOptions: SegmentedPickerOption[] = useMemo(() => {
+    const allCount = emails.filter(e => !disabledAccountIds.has(e.accountId) && e.unread).length;
+    const opts: SegmentedPickerOption[] = [
+      { id: '__all__', label: 'All', count: allCount },
+    ];
+    for (const a of enabledAccounts) {
+      const unread = emails.filter(e => e.accountId === a.id && e.unread).length;
+      opts.push({ id: a.id, label: a.name, color: a.color, count: unread });
+    }
+    return opts;
+  }, [emails, enabledAccounts, disabledAccountIds]);
+
+  const selectedSegmentId = accountId ?? '__all__';
+
+  // === Scroll position persistence ===
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollKey = `mobile-inbox-${accountId || 'all-inboxes'}`;
+
+  useLayoutEffect(() => {
+    const saved = scrollPositions.get(scrollKey);
+    if (saved && scrollRef.current) {
+      scrollRef.current.scrollTop = saved;
+    }
+  }, [scrollKey]);
+
+  // Auto-fetch more pages if the list isn't scrollable (filter narrows results)
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !_hasNextPage || !_fetchNextPage || searchQuery) return;
+    const check = () => {
+      if (_isFetchingNextPage) return;
+      const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 200;
+      if (el.scrollHeight <= el.clientHeight + 10 || atBottom) {
+        _fetchNextPage();
+      }
+    };
+    check();
+    const id = setInterval(check, 300);
+    return () => clearInterval(id);
+  }, [_hasNextPage, _isFetchingNextPage, _fetchNextPage, searchQuery]);
+
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    scrollPositions.set(scrollKey, el.scrollTop);
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 200) {
+      if (_hasNextPage && !_isFetchingNextPage) _fetchNextPage?.();
+    }
+  }, [scrollKey, _fetchNextPage, _hasNextPage, _isFetchingNextPage]);
+
+  const syncMutation = useSyncAccount();
+  const handleRefresh = useCallback(async () => {
+    const targets = accountId ? [accountId] : enabledAccounts.map(a => a.id);
+    if (targets.length === 0) return;
+    try {
+      await Promise.all(targets.map(id => syncMutation.mutateAsync({ accountId: id, mode: 'incremental' })));
+    } catch (e) {
+      // Mock mode raises; surface in console but don't crash the gesture.
+      // eslint-disable-next-line no-console
+      console.warn('Pull-to-refresh sync failed:', e);
+    }
+  }, [accountId, enabledAccounts, syncMutation]);
+
+  const { pullDistance, refreshing, armed } = usePullToRefresh({
+    containerRef: scrollRef,
+    onRefresh: handleRefresh,
+  });
+
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [accountsOpen, setAccountsOpen] = useState(false);
+  const multiCount = useStore(s => s.multiSelectedIds.size);
+
+  const filterActive = globalFilters.size > 0;
+  const accountsHidden = disabledAccountIds.size > 0;
+
+  return (
+    <div className="mobile-screen">
+      {multiCount > 0 ? (
+        <MobileMultiSelectBar visibleEmailIds={displayEmails.map(e => e.id)} />
+      ) : (
+      <>
+      <MobileTopBar
+        title={account ? account.name : 'All Inboxes'}
+        rightSlot={
+          <>
+            <button
+              type="button"
+              className="mobile-topbar-icon-btn"
+              onClick={() => setSearchOpen(true)}
+              aria-label="Search"
+            >
+              <Icons.Search />
+            </button>
+            <button
+              type="button"
+              className={`mobile-topbar-icon-btn${filterActive ? ' active-accent' : ''}`}
+              onClick={() => setFiltersOpen(true)}
+              aria-label="Filter"
+            >
+              <Icons.FilterLines />
+            </button>
+            <button
+              type="button"
+              className={`mobile-topbar-icon-btn${accountsHidden ? ' active-accent' : ''}`}
+              onClick={() => setAccountsOpen(true)}
+              aria-label="Accounts"
+            >
+              <AccountsIcon />
+            </button>
+            <button
+              type="button"
+              className="mobile-topbar-icon-btn"
+              onClick={toggleSettings}
+              aria-label="Settings"
+            >
+              <Icons.Settings />
+            </button>
+          </>
+        }
+      />
+      <MobileSegmentedPicker
+        options={pickerOptions}
+        selectedId={selectedSegmentId}
+        onSelect={(id) => setMobileInboxSelected(id === '__all__' ? null : id)}
+      />
+      </>
+      )}
+      <MobileSearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} />
+      <MobileFiltersSheet open={filtersOpen} onClose={() => setFiltersOpen(false)} />
+      <MobileAccountsSheet open={accountsOpen} onClose={() => setAccountsOpen(false)} />
+      <div className="mobile-list-wrap">
+        <PullIndicator pullDistance={pullDistance} refreshing={refreshing} armed={armed} />
+        <div className="mobile-list" ref={scrollRef} onScroll={handleScroll} style={{
+          transform: pullDistance > 0 && !refreshing ? `translateY(${pullDistance}px)` : undefined,
+          transition: pullDistance === 0 ? 'transform 0.2s ease-out' : 'none',
+        }}>
+          {displayEmails.length === 0 ? (
+            <div className="mobile-empty">No emails to show.</div>
+          ) : (
+            displayEmails.map(email => (
+              <MobileEmailListItem
+                key={email.id}
+                email={email}
+                accent={accent}
+                accounts={accounts}
+                columnId={accountId || 'all-inboxes'}
+                sourceAccountId={accountId || undefined}
+                sweepSeconds={sweepLookup.get(email.id)?.seconds}
+                sweepAction={sweepLookup.get(email.id)?.action}
+                matchedSweepRule={sweepRuleMatchLookup.get(email.id)}
+                matchedStreams={matchedStreamsMap.get(email.id)}
+              />
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PullIndicator({ pullDistance, refreshing, armed }: { pullDistance: number; refreshing: boolean; armed: boolean }) {
+  if (!refreshing && pullDistance === 0) return null;
+  const opacity = refreshing ? 1 : Math.min(1, pullDistance / 60);
+  const rotation = refreshing ? 0 : Math.min(180, pullDistance * 3);
+  return (
+    <div className="mobile-pull-indicator" style={{ opacity, top: refreshing ? 18 : Math.max(8, pullDistance / 2 - 12) }}>
+      <span className={`mobile-pull-spinner${refreshing ? ' spinning' : ''}${armed ? ' armed' : ''}`} style={{ transform: refreshing ? undefined : `rotate(${rotation}deg)` }} />
+    </div>
+  );
+}
+
+function AccountsIcon() {
+  return (
+    <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <circle cx={12} cy={8} r={4} />
+      <path d="M4 21a8 8 0 0 1 16 0" />
+    </svg>
+  );
+}
