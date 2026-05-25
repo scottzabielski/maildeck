@@ -324,6 +324,15 @@ body.is-mobile {
   background: var(--column-accent, var(--blue));
 }
 
+/* Match desktop: any row with an active or pending sweep gets a faint red wash. */
+.mobile-email-row.has-sweep {
+  background: rgba(220, 38, 38, 0.04);
+}
+
+.mobile-email-row.has-sweep:active {
+  background: rgba(220, 38, 38, 0.10);
+}
+
 .mobile-email-row-check {
   display: flex;
   align-items: center;
@@ -1663,7 +1672,7 @@ button.mobile-settings-row:active {
 
 .mobile-email-row-action-right {
   left: 0;
-  background: var(--amber, #f59e0b);
+  background: var(--blue, #2563eb);
 }
 
 /* ===== Pull-to-refresh indicator ===== */

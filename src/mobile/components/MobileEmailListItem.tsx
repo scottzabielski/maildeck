@@ -43,7 +43,7 @@ export function MobileEmailListItem({
   const multiSelectedIds = useStore(s => s.multiSelectedIds);
   const toggleMultiSelect = useStore(s => s.toggleMultiSelect);
   const archiveEmail = useStore(s => s.archiveEmail);
-  const toggleStar = useStore(s => s.toggleStar);
+  const deleteEmail = useStore(s => s.deleteEmail);
   const isExempted = useStore(s => s.exemptedEmailIds.has(email.id));
   const selectedEmailId = useStore(s => s.selectedEmail?.emailId ?? null);
 
@@ -114,12 +114,12 @@ export function MobileEmailListItem({
     const fraction = Math.abs(finalOffset) / width;
     if (fraction >= COMMIT_FRACTION) {
       if (finalOffset < 0) {
-        archiveEmail(email.id);
+        deleteEmail(email.id);
       } else if (finalOffset > 0) {
-        toggleStar(email.id);
+        archiveEmail(email.id);
       }
     }
-  }, [archiveEmail, toggleStar, email.id]);
+  }, [deleteEmail, archiveEmail, email.id]);
 
   const onPointerUp = useCallback((_e: React.PointerEvent) => {
     clearLongPress();
@@ -185,22 +185,23 @@ export function MobileEmailListItem({
     offset !== 0 ? 'swiping' : '',
   ].filter(Boolean).join(' ');
 
-  // Side bg color reveals the action being performed
-  const showingArchive = offset < 0;
-  const showingStar = offset > 0;
+  // Slab on the right reveals what a left-swipe will do (delete).
+  // Slab on the left reveals what a right-swipe will do (archive).
+  const showingDelete = offset < 0;
+  const showingArchive = offset > 0;
 
   return (
     <div className="mobile-email-row-wrap">
-      {showingArchive && (
+      {showingDelete && (
         <div className="mobile-email-row-action mobile-email-row-action-left">
-          <Icons.Archive />
-          <span>Archive</span>
+          <Icons.Trash />
+          <span>Delete</span>
         </div>
       )}
-      {showingStar && (
+      {showingArchive && (
         <div className="mobile-email-row-action mobile-email-row-action-right">
-          <Icons.Star />
-          <span>Star</span>
+          <Icons.Archive />
+          <span>Archive</span>
         </div>
       )}
       <div
