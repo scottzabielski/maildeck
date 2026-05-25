@@ -131,7 +131,15 @@ function SettingsAccountRow({ account }: { account: Account }) {
 // ========================================
 function SettingsAccounts({ accounts }: { accounts: Account[] }) {
   const reorderAccounts = useStore(s => s.reorderAccounts);
+  const { user, signOut } = useAuth();
   const [showConnect, setShowConnect] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+
+  const handleSignOut = async () => {
+    if (!confirm('Sign out of MailDeck?')) return;
+    setSigningOut(true);
+    try { await signOut(); } finally { setSigningOut(false); }
+  };
 
   return (
     <>
@@ -160,6 +168,28 @@ function SettingsAccounts({ accounts }: { accounts: Account[] }) {
         </button>
       </Reorder.Group>
       {showConnect && <ConnectAccountFlow onClose={() => setShowConnect(false)} />}
+
+      {user && (
+        <>
+          <div className="settings-content-title" style={{ marginTop: 20 }}>Session</div>
+          <div className="settings-card">
+            <div className="settings-option">
+              <div className="settings-option-info">
+                <div className="settings-option-label">Signed in as</div>
+                <div className="settings-option-desc">{user.email}</div>
+              </div>
+              <button
+                className="btn-secondary"
+                onClick={handleSignOut}
+                disabled={signingOut}
+                style={signingOut ? { opacity: 0.5, cursor: 'default' } : undefined}
+              >
+                {signingOut ? 'Signing out…' : 'Sign out'}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </>
   );
 }

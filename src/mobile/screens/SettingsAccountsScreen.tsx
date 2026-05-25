@@ -9,8 +9,16 @@ import type { Account } from '../../types/index.ts';
 export function SettingsAccountsScreen() {
   const accounts = useStore(s => s.accounts);
   const reorderAccounts = useStore(s => s.reorderAccounts);
+  const { user, signOut } = useAuth();
   const [reorderMode, setReorderMode] = useState(false);
   const [showConnect, setShowConnect] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+
+  const handleSignOut = async () => {
+    if (!confirm('Sign out of MailDeck?')) return;
+    setSigningOut(true);
+    try { await signOut(); } finally { setSigningOut(false); }
+  };
 
   const moveUp = (idx: number) => {
     if (idx <= 0) return;
@@ -61,6 +69,30 @@ export function SettingsAccountsScreen() {
       </div>
 
       {showConnect && <ConnectAccountSheet onClose={() => setShowConnect(false)} />}
+
+      {user && (
+        <>
+          <div className="mobile-settings-header" style={{ marginTop: 16 }}>
+            <div className="mobile-settings-header-text">Session</div>
+          </div>
+          <div className="mobile-settings-card">
+            <div className="mobile-settings-row">
+              <div className="mobile-settings-row-main">
+                <div className="mobile-settings-row-primary">Signed in as</div>
+                <div className="mobile-settings-row-secondary">{user.email}</div>
+              </div>
+              <button
+                type="button"
+                className="mobile-settings-row-btn danger"
+                onClick={handleSignOut}
+                disabled={signingOut}
+              >
+                {signingOut ? '…' : 'Sign out'}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
