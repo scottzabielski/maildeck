@@ -9,7 +9,6 @@ import { MobileSegmentedPicker, type SegmentedPickerOption } from '../components
 import { MobileEmailListItem } from '../components/MobileEmailListItem.tsx';
 import { MobileSearchOverlay } from '../components/MobileSearchOverlay.tsx';
 import { MobileFiltersSheet } from '../components/MobileFiltersSheet.tsx';
-import { MobileAccountsSheet } from '../components/MobileAccountsSheet.tsx';
 import { MobileMultiSelectBar } from '../components/MobileMultiSelectBar.tsx';
 import { usePullToRefresh } from '../hooks/usePullToRefresh.ts';
 import type { MobileNav } from '../navTypes.ts';
@@ -30,8 +29,7 @@ export function InboxesScreen({ nav: _nav }: InboxesScreenProps) {
   const _fetchNextPage = useStore(s => s._fetchNextPage);
   const _hasNextPage = useStore(s => s._hasNextPage);
   const _isFetchingNextPage = useStore(s => s._isFetchingNextPage);
-  const mobileInboxSelected = useStore(s => s.mobileInboxSelected);
-  const setMobileInboxSelected = useStore(s => s.setMobileInboxSelected);
+  const toggleAccount = useStore(s => s.toggleAccount);
   const toggleSettings = useStore(s => s.toggleSettings);
 
   const enabledAccounts = useMemo(
@@ -39,26 +37,14 @@ export function InboxesScreen({ nav: _nav }: InboxesScreenProps) {
     [accounts, disabledAccountIds],
   );
 
-  // Ensure selected account is still enabled; if not, drop back to "All".
-  useEffect(() => {
-    if (mobileInboxSelected && !enabledAccounts.some(a => a.id === mobileInboxSelected)) {
-      setMobileInboxSelected(null);
-    }
-  }, [mobileInboxSelected, enabledAccounts, setMobileInboxSelected]);
+  // Picker is now a multi-toggle: list always shows the union of enabled
+  // accounts. No single-account focused view, no mobileInboxSelected.
+  const accent = enabledAccounts.length === 1 ? enabledAccounts[0].color : '#3b82f6';
 
-  const accountId = mobileInboxSelected; // null = All Inboxes
-  const account = accountId ? accounts.find(a => a.id === accountId) ?? null : null;
-  const accent = account ? account.color : '#3b82f6';
-
-  // === Filter logic (mirrors src/components/InboxColumn.tsx) ===
+  // === Filter logic ===
   const columnEmails = useMemo(() => {
     const q = searchQuery.toLowerCase();
-    let filtered;
-    if (accountId) {
-      filtered = emails.filter(e => e.accountId === accountId && !disabledAccountIds.has(e.accountId));
-    } else {
-      filtered = emails.filter(e => !disabledAccountIds.has(e.accountId));
-    }
+    let filtered = emails.filter(e => !disabledAccountIds.has(e.accountId));
     if (q) {
       filtered = filtered.filter(e =>
         e.sender.toLowerCase().includes(q)
@@ -68,7 +54,7 @@ export function InboxesScreen({ nav: _nav }: InboxesScreenProps) {
       );
     }
     return [...filtered].sort((a, b) => b.time - a.time);
-  }, [emails, accountId, disabledAccountIds, searchQuery]);
+  }, [emails, disabledAccountIds, searchQuery]);
 
   const sweepLookup = useMemo(() => {
     const map = new Map<string, { seconds: number; action: string }>();
@@ -142,23 +128,47 @@ export function InboxesScreen({ nav: _nav }: InboxesScreenProps) {
   }, [columnEmails, globalFilters, matchedStreamsMap, enabledSweepRules]);
 
   // === Segmented picker options ===
+  // Picker is a multi-toggle. "All" mass-toggles every account; per-account
+  // chips toggle just that one. Disabled chips are shown but visually dimmed
+  // (via the existing .mobile-picker-chip non-active state).
+  const allEnabled = disabledAccountIds.size === 0 && accounts.length > 0;
   const pickerOptions: SegmentedPickerOption[] = useMemo(() => {
     const allCount = emails.filter(e => !disabledAccountIds.has(e.accountId) && e.unread).length;
     const opts: SegmentedPickerOption[] = [
       { id: '__all__', label: 'All', count: allCount },
     ];
-    for (const a of enabledAccounts) {
+    for (const a of accounts) {
       const unread = emails.filter(e => e.accountId === a.id && e.unread).length;
       opts.push({ id: a.id, label: a.name, color: a.color, count: unread });
     }
     return opts;
-  }, [emails, enabledAccounts, disabledAccountIds]);
+  }, [emails, accounts, disabledAccountIds]);
 
-  const selectedSegmentId = accountId ?? '__all__';
+  // Render chips' active state: All is active when nothing's disabled; each
+  // account chip is active when its account is enabled.
+  const activeIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (allEnabled) ids.add('__all__');
+    for (const a of accounts) if (!disabledAccountIds.has(a.id)) ids.add(a.id);
+    return ids;
+  }, [accounts, disabledAccountIds, allEnabled]);
+
+  const handlePickerSelect = (id: string) => {
+    if (id === '__all__') {
+      // Mass toggle: if anything's disabled, enable all; else disable all.
+      if (disabledAccountIds.size === 0) {
+        useStore.setState({ disabledAccountIds: new Set(accounts.map(a => a.id)) });
+      } else {
+        useStore.setState({ disabledAccountIds: new Set() });
+      }
+    } else {
+      toggleAccount(id);
+    }
+  };
 
   // === Scroll position persistence ===
   const scrollRef = useRef<HTMLDivElement>(null);
-  const scrollKey = `mobile-inbox-${accountId || 'all-inboxes'}`;
+  const scrollKey = 'mobile-inbox-list';
 
   useLayoutEffect(() => {
     const saved = scrollPositions.get(scrollKey);
@@ -193,7 +203,7 @@ export function InboxesScreen({ nav: _nav }: InboxesScreenProps) {
 
   const syncMutation = useSyncAccount();
   const handleRefresh = useCallback(async () => {
-    const targets = accountId ? [accountId] : enabledAccounts.map(a => a.id);
+    const targets = enabledAccounts.map(a => a.id);
     if (targets.length === 0) return;
     try {
       await Promise.all(targets.map(id => syncMutation.mutateAsync({ accountId: id, mode: 'incremental' })));
@@ -202,7 +212,7 @@ export function InboxesScreen({ nav: _nav }: InboxesScreenProps) {
       // eslint-disable-next-line no-console
       console.warn('Pull-to-refresh sync failed:', e);
     }
-  }, [accountId, enabledAccounts, syncMutation]);
+  }, [enabledAccounts, syncMutation]);
 
   const { pullDistance, refreshing, armed } = usePullToRefresh({
     containerRef: scrollRef,
@@ -211,11 +221,9 @@ export function InboxesScreen({ nav: _nav }: InboxesScreenProps) {
 
   const [searchOpen, setSearchOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [accountsOpen, setAccountsOpen] = useState(false);
   const multiCount = useStore(s => s.multiSelectedIds.size);
 
   const filterActive = globalFilters.size > 0;
-  const accountsHidden = disabledAccountIds.size > 0;
 
   return (
     <div className="mobile-screen">
@@ -226,7 +234,15 @@ export function InboxesScreen({ nav: _nav }: InboxesScreenProps) {
       ) : (
       <>
       <MobileTopBar
-        title={account ? account.name : 'All Inboxes'}
+        title={
+          enabledAccounts.length === 0
+            ? 'Inboxes'
+            : enabledAccounts.length === 1
+              ? enabledAccounts[0].name
+              : disabledAccountIds.size === 0
+                ? 'All Inboxes'
+                : `${enabledAccounts.length} Inboxes`
+        }
         rightSlot={
           <>
             <button
@@ -247,14 +263,6 @@ export function InboxesScreen({ nav: _nav }: InboxesScreenProps) {
             </button>
             <button
               type="button"
-              className={`mobile-topbar-icon-btn${accountsHidden ? ' active-accent' : ''}`}
-              onClick={() => setAccountsOpen(true)}
-              aria-label="Accounts"
-            >
-              <AccountsIcon />
-            </button>
-            <button
-              type="button"
               className="mobile-topbar-icon-btn"
               onClick={toggleSettings}
               aria-label="Settings"
@@ -266,13 +274,12 @@ export function InboxesScreen({ nav: _nav }: InboxesScreenProps) {
       />
       <MobileSegmentedPicker
         options={pickerOptions}
-        selectedId={selectedSegmentId}
-        onSelect={(id) => setMobileInboxSelected(id === '__all__' ? null : id)}
+        activeIds={activeIds}
+        onSelect={handlePickerSelect}
       />
       </>
       )}
       <MobileFiltersSheet open={filtersOpen} onClose={() => setFiltersOpen(false)} />
-      <MobileAccountsSheet open={accountsOpen} onClose={() => setAccountsOpen(false)} />
       <div className="mobile-list-wrap">
         <PullIndicator pullDistance={pullDistance} refreshing={refreshing} armed={armed} />
         <div className="mobile-list" ref={scrollRef} onScroll={handleScroll} style={{
@@ -290,8 +297,7 @@ export function InboxesScreen({ nav: _nav }: InboxesScreenProps) {
                 email={email}
                 accent={accent}
                 accounts={accounts}
-                columnId={accountId || 'all-inboxes'}
-                sourceAccountId={accountId || undefined}
+                columnId={'all-inboxes'}
                 sweepSeconds={sweepLookup.get(email.id)?.seconds}
                 sweepAction={sweepLookup.get(email.id)?.action}
                 matchedSweepRule={sweepRuleMatchLookup.get(email.id)}
@@ -316,11 +322,3 @@ function PullIndicator({ pullDistance, refreshing, armed }: { pullDistance: numb
   );
 }
 
-function AccountsIcon() {
-  return (
-    <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <circle cx={12} cy={8} r={4} />
-      <path d="M4 21a8 8 0 0 1 16 0" />
-    </svg>
-  );
-}

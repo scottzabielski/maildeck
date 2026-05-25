@@ -11,7 +11,10 @@ export interface SegmentedPickerOption {
 
 interface MobileSegmentedPickerProps {
   options: SegmentedPickerOption[];
-  selectedId: string;
+  /** Single-select mode: the id of the active chip. */
+  selectedId?: string;
+  /** Multi-toggle mode: the set of currently active chip ids. */
+  activeIds?: Set<string>;
   onSelect: (id: string) => void;
   /** Optional trailing chips rendered after the options (e.g. "+ Add"). */
   trailing?: ReactNode;
@@ -20,13 +23,16 @@ interface MobileSegmentedPickerProps {
 export function MobileSegmentedPicker({
   options,
   selectedId,
+  activeIds,
   onSelect,
   trailing,
 }: MobileSegmentedPickerProps) {
+  const isActive = (id: string) =>
+    activeIds ? activeIds.has(id) : id === selectedId;
   return (
     <div className="mobile-picker" role="tablist">
       {options.map(opt => {
-        const active = opt.id === selectedId;
+        const active = isActive(opt.id);
         return (
           <button
             key={opt.id}

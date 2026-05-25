@@ -60,10 +60,26 @@ export function MobileSearchOverlay({ open, onClose }: MobileSearchOverlayProps)
         </div>
       </div>
 
-      {/* Account toggle strip — tap any account to enable/disable it. Disabled
-          accounts are dimmed; tapping re-enables. Live filters the list below. */}
+      {/* Account toggle strip. Tap "All" to mass-enable/disable every account;
+          tap an individual chip to toggle just that one. Disabled chips are
+          dimmed. Filters the live search results below. */}
       {accounts.length > 0 && (
         <div className="mobile-search-accounts">
+          <button
+            type="button"
+            className={`mobile-search-account${disabledAccountIds.size === 0 ? ' on' : ''}`}
+            onClick={() => {
+              if (disabledAccountIds.size === 0) {
+                useStore.setState({ disabledAccountIds: new Set(accounts.map(a => a.id)) });
+              } else {
+                useStore.setState({ disabledAccountIds: new Set() });
+              }
+            }}
+            aria-pressed={disabledAccountIds.size === 0}
+            title={disabledAccountIds.size === 0 ? 'Hide all' : 'Show all'}
+          >
+            <span className="mobile-search-account-name">All</span>
+          </button>
           {accounts.map(a => {
             const enabled = !disabledAccountIds.has(a.id);
             return (

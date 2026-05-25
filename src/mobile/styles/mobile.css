@@ -190,7 +190,7 @@ body.is-mobile {
   gap: 6px;
   border-radius: 16px;
   background: var(--bg-elevated);
-  color: var(--text-secondary);
+  color: var(--text-tertiary);
   border: 1px solid var(--border-subtle);
   font: inherit;
   font-size: 13px;
@@ -200,6 +200,7 @@ body.is-mobile {
   scroll-snap-align: start;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
+  opacity: 0.55;
 }
 
 .mobile-picker-chip:active {
@@ -211,6 +212,7 @@ body.is-mobile {
   color: var(--text-primary);
   border-color: var(--border-medium);
   box-shadow: 0 0 0 1px var(--border-medium);
+  opacity: 1;
 }
 
 .mobile-picker-chip-dot {
