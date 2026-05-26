@@ -10,6 +10,7 @@ interface AuthState {
 
 export function useAuth(): AuthState & {
   signInWithEmail: (email: string) => Promise<{ error: Error | null }>;
+  verifyEmailOtp: (email: string, token: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
 } {
   const [user, setUser] = useState<User | null>(null);
@@ -49,10 +50,20 @@ export function useAuth(): AuthState & {
     return { error };
   };
 
+  const verifyEmailOtp = async (email: string, token: string) => {
+    if (!supabase) return { error: new Error('Supabase not configured') };
+    const { error } = await supabase.auth.verifyOtp({
+      email,
+      token,
+      type: 'email',
+    });
+    return { error };
+  };
+
   const signOut = async () => {
     if (!supabase) return;
     await supabase.auth.signOut();
   };
 
-  return { user, session, loading, signInWithEmail, signOut };
+  return { user, session, loading, signInWithEmail, verifyEmailOtp, signOut };
 }

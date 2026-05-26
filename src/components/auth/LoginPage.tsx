@@ -3,11 +3,13 @@ import { Icons } from '../ui/Icons.tsx';
 import { useAuth } from '../../hooks/useAuth.ts';
 
 export function LoginPage() {
-  const { signInWithEmail } = useAuth();
+  const { signInWithEmail, verifyEmailOtp } = useAuth();
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [code, setCode] = useState('');
+  const [verifying, setVerifying] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,6 +23,19 @@ export function LoginPage() {
       setError(err.message);
     } else {
       setSent(true);
+    }
+  };
+
+  const handleVerify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setVerifying(true);
+
+    const { error: err } = await verifyEmailOtp(email, code.trim());
+    setVerifying(false);
+
+    if (err) {
+      setError(err.message);
     }
   };
 
@@ -58,12 +73,13 @@ export function LoginPage() {
         </div>
 
         {sent ? (
-          <div style={{ textAlign: 'center' }}>
+          <form onSubmit={handleVerify}>
             <div style={{
               fontSize: '15px',
               fontWeight: 600,
               color: 'var(--text-primary)',
               marginBottom: '8px',
+              textAlign: 'center',
             }}>
               Check your email
             </div>
@@ -71,11 +87,90 @@ export function LoginPage() {
               fontSize: '13px',
               color: 'var(--text-secondary)',
               lineHeight: 1.5,
+              marginBottom: '20px',
+              textAlign: 'center',
             }}>
-              We sent a magic link to <strong style={{ color: 'var(--text-primary)' }}>{email}</strong>.
-              Click the link to sign in.
+              We sent a magic link and a 6-digit code to{' '}
+              <strong style={{ color: 'var(--text-primary)' }}>{email}</strong>.
+              Click the link or enter the code below.
             </div>
-          </div>
+
+            <input
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              placeholder="000000"
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              maxLength={6}
+              autoFocus
+              style={{
+                width: '100%',
+                fontFamily: 'var(--font-mono, monospace)',
+                fontSize: '20px',
+                letterSpacing: '0.4em',
+                textAlign: 'center',
+                padding: '12px 14px',
+                background: 'var(--bg-base)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: 'var(--radius-md)',
+                color: 'var(--text-primary)',
+                outline: 'none',
+                marginBottom: '12px',
+              }}
+            />
+
+            {error && (
+              <div style={{
+                fontSize: '12px',
+                color: 'var(--red)',
+                marginBottom: '12px',
+                textAlign: 'center',
+              }}>
+                {error}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={verifying || code.length !== 6}
+              style={{
+                width: '100%',
+                fontSize: '13px',
+                fontWeight: 600,
+                padding: '10px',
+                borderRadius: 'var(--radius-md)',
+                color: 'white',
+                background: verifying || code.length !== 6 ? 'var(--text-tertiary)' : 'var(--blue)',
+                border: 'none',
+                cursor: verifying || code.length !== 6 ? 'not-allowed' : 'pointer',
+                fontFamily: 'var(--font-body)',
+                marginBottom: '12px',
+              }}
+            >
+              {verifying ? 'Verifying...' : 'Sign in'}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setSent(false);
+                setCode('');
+                setError(null);
+              }}
+              style={{
+                width: '100%',
+                fontSize: '12px',
+                color: 'var(--text-tertiary)',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                fontFamily: 'var(--font-body)',
+              }}
+            >
+              Use a different email
+            </button>
+          </form>
         ) : (
           <form onSubmit={handleSubmit}>
             <div style={{
@@ -93,7 +188,7 @@ export function LoginPage() {
               marginBottom: '24px',
               textAlign: 'center',
             }}>
-              Enter your email to receive a magic link
+              Enter your email to receive a magic link and code
             </div>
 
             <input
