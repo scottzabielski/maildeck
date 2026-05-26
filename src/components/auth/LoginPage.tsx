@@ -90,7 +90,7 @@ export function LoginPage() {
               marginBottom: '20px',
               textAlign: 'center',
             }}>
-              We sent a magic link and a 6-digit code to{' '}
+              We sent a magic link and an 8-digit code to{' '}
               <strong style={{ color: 'var(--text-primary)' }}>{email}</strong>.
               Click the link or enter the code below.
             </div>
@@ -99,10 +99,10 @@ export function LoginPage() {
               type="text"
               inputMode="numeric"
               autoComplete="one-time-code"
-              placeholder="000000"
+              placeholder="00000000"
               value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-              maxLength={6}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 8))}
+              maxLength={8}
               autoFocus
               style={{
                 width: '100%',
@@ -133,7 +133,7 @@ export function LoginPage() {
 
             <button
               type="submit"
-              disabled={verifying || code.length !== 6}
+              disabled={verifying || code.length !== 8}
               style={{
                 width: '100%',
                 fontSize: '13px',
@@ -141,9 +141,9 @@ export function LoginPage() {
                 padding: '10px',
                 borderRadius: 'var(--radius-md)',
                 color: 'white',
-                background: verifying || code.length !== 6 ? 'var(--text-tertiary)' : 'var(--blue)',
+                background: verifying || code.length !== 8 ? 'var(--text-tertiary)' : 'var(--blue)',
                 border: 'none',
-                cursor: verifying || code.length !== 6 ? 'not-allowed' : 'pointer',
+                cursor: verifying || code.length !== 8 ? 'not-allowed' : 'pointer',
                 fontFamily: 'var(--font-body)',
                 marginBottom: '12px',
               }}
@@ -188,7 +188,7 @@ export function LoginPage() {
               marginBottom: '24px',
               textAlign: 'center',
             }}>
-              Enter your email to receive a magic link and code
+              Enter your email to receive a magic link and 8-digit code
             </div>
 
             <input
