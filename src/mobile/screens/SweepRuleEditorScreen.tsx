@@ -87,6 +87,20 @@ export function SweepRuleEditorScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sweepRuleEditor]);
 
+  const derivedName = useMemo(() => {
+    return criteria
+      .filter(c => c.value.trim())
+      .map(c => {
+        if (c.field === 'stream') {
+          const col = columns.find(col => col.id === c.value);
+          return `Stream: "${col?.name || c.value}"`;
+        }
+        const fieldLabel = { from: 'From', to: 'To', subject: 'Subject', body: 'Body', label: 'Label' }[c.field] || c.field;
+        return `${fieldLabel} ${c.op.replace('_', ' ')} "${c.value}"`;
+      })
+      .join(criteriaLogic === 'and' ? ' AND ' : ' OR ') || 'Untitled rule';
+  }, [criteria, criteriaLogic, columns]);
+
   if (!sweepRuleEditor) return null;
 
   const addRow = () => setCriteria(prev => [...prev, { field: 'from', op: 'contains', value: '' }]);
@@ -99,21 +113,6 @@ export function SweepRuleEditorScreen() {
     }));
   };
 
-  const buildRuleName = () => {
-    return criteria
-      .filter(c => c.value.trim())
-      .map(c => {
-        if (c.field === 'stream') {
-          const col = columns.find(col => col.id === c.value);
-          return `Stream: "${col?.name || c.value}"`;
-        }
-        const fieldLabel = { from: 'From', to: 'To', subject: 'Subject', body: 'Body', label: 'Label' }[c.field] || c.field;
-        return `${fieldLabel} ${c.op.replace('_', ' ')} "${c.value}"`;
-      })
-      .join(criteriaLogic === 'and' ? ' AND ' : ' OR ') || 'Untitled rule';
-  };
-
-  const derivedName = useMemo(() => buildRuleName(), [criteria, criteriaLogic, columns]);
   const effectiveName = nameUserEdited && name.trim() ? name.trim() : derivedName;
 
   const handleSuggestName = async () => {
