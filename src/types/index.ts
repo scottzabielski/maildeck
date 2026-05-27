@@ -91,3 +91,25 @@ export type UndoAction = {
   email: Email | Email[] | SweepEmail;
   timestamp: number;
 };
+
+export type SuggestionKind = 'duplicate' | 'merge' | 'absorb' | 'redundant' | 'rename' | 'conflict';
+
+export type ProposedRule = {
+  name?: string;
+  detail?: string;
+  criteria?: Criterion[];
+  criteriaLogic?: 'and' | 'or';
+  action?: string;
+  delayHours?: number;
+};
+
+export type Suggestion = {
+  hash: string;
+  kind: SuggestionKind;
+  ruleIds: string[];
+  proposedRule?: ProposedRule;
+  keepRuleId?: string;
+  rationale: string;
+  confidence: 'high' | 'medium' | 'low';
+  source: 'deterministic' | 'llm';
+};

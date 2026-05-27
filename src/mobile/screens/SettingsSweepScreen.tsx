@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import { Icons } from '../../components/ui/Icons.tsx';
 import { useStore } from '../../store/index.ts';
 import { useAuth } from '../../hooks/useAuth.ts';
 import { useDeleteSweepRule } from '../../hooks/useSweepRules.ts';
+import { SweepSuggestionsScreen } from './SweepSuggestionsScreen.tsx';
 import type { SweepRule } from '../../types/index.ts';
 
 function formatRuleSummary(rule: SweepRule): string {
@@ -27,6 +29,7 @@ export function SettingsSweepScreen() {
   const openNewSweepRuleEditor = useStore(s => s.openNewSweepRuleEditor);
   const { user } = useAuth();
   const deleteMutation = useDeleteSweepRule();
+  const [aiReviewOpen, setAiReviewOpen] = useState(false);
 
   const handleDelete = (rule: SweepRule) => {
     if (!confirm(`Delete rule "${rule.name}"?`)) return;
@@ -115,6 +118,17 @@ export function SettingsSweepScreen() {
           <Icons.Plus /> Add rule
         </button>
       </div>
+
+      <button
+        type="button"
+        className="mobile-ai-review-btn"
+        onClick={() => setAiReviewOpen(true)}
+        disabled={sweepRules.length < 2}
+      >
+        <Icons.Sparkle /> Review with AI
+      </button>
+
+      {aiReviewOpen && <SweepSuggestionsScreen onClose={() => setAiReviewOpen(false)} />}
     </div>
   );
 }

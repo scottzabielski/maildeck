@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Icons } from '../../components/ui/Icons.tsx';
 import { useStore } from '../../store/index.ts';
 import { useAuth } from '../../hooks/useAuth.ts';
 import { useCreateSweepRule, useUpdateSweepRule, useApplySweepRule } from '../../hooks/useSweepRules.ts';
+import { useSuggestRuleName } from '../../hooks/useSuggestions.ts';
 import { MobileTopBar } from '../components/MobileTopBar.tsx';
 import type { Criterion } from '../../types/index.ts';
 
@@ -22,6 +23,7 @@ export function SweepRuleEditorScreen() {
   const createMutation = useCreateSweepRule();
   const updateMutation = useUpdateSweepRule();
   const applyMutation = useApplySweepRule();
+  const suggestNameMutation = useSuggestRuleName();
 
   const isEditMode = !!sweepRuleEditor?.ruleId;
 
@@ -31,11 +33,15 @@ export function SweepRuleEditorScreen() {
   const [subAction, setSubAction] = useState<'archive' | 'delete'>('archive');
   const [delayHours, setDelayHours] = useState(sweepDelayHours);
   const [error, setError] = useState<string | null>(null);
+  const [name, setName] = useState('');
+  const [nameUserEdited, setNameUserEdited] = useState(false);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
 
   const selectedAction = mode === 'keep_newest' ? `keep_newest_${subAction}` : subAction;
 
   useEffect(() => {
     if (!sweepRuleEditor) return;
+    setSuggestError(null);
     if (sweepRuleEditor.ruleId) {
       const rule = sweepRules.find(r => r.id === sweepRuleEditor.ruleId);
       if (rule) {
@@ -49,6 +55,8 @@ export function SweepRuleEditorScreen() {
           setSubAction(rule.action as 'archive' | 'delete');
         }
         setDelayHours(rule.delayHours);
+        setName(rule.name);
+        setNameUserEdited(true);
       }
     } else if (sweepRuleEditor.blank) {
       setCriteria([{ field: 'from', op: 'contains', value: '' }]);
@@ -56,12 +64,16 @@ export function SweepRuleEditorScreen() {
       setMode('always');
       setSubAction('archive');
       setDelayHours(sweepDelayHours);
+      setName('');
+      setNameUserEdited(false);
     } else if (sweepRuleEditor.columnId && !sweepRuleEditor.emailId) {
       setCriteria([{ field: 'stream', op: 'equals', value: sweepRuleEditor.columnId }]);
       setCriteriaLogic('and');
       setMode('always');
       setSubAction('archive');
       setDelayHours(sweepDelayHours);
+      setName('');
+      setNameUserEdited(false);
     } else {
       const v = sweepRuleEditor.senderEmail || sweepRuleEditor.sender;
       setCriteria([{ field: 'from', op: 'contains', value: v }]);
@@ -69,6 +81,8 @@ export function SweepRuleEditorScreen() {
       setMode('always');
       setSubAction('archive');
       setDelayHours(sweepDelayHours);
+      setName('');
+      setNameUserEdited(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sweepRuleEditor]);
@@ -99,6 +113,48 @@ export function SweepRuleEditorScreen() {
       .join(criteriaLogic === 'and' ? ' AND ' : ' OR ') || 'Untitled rule';
   };
 
+  const derivedName = useMemo(() => buildRuleName(), [criteria, criteriaLogic, columns]);
+  const effectiveName = nameUserEdited && name.trim() ? name.trim() : derivedName;
+
+  const handleSuggestName = async () => {
+    const valid = criteria.filter(c => c.value.trim());
+    if (valid.length === 0) return;
+    setSuggestError(null);
+
+    if (useMockData || !user?.id) {
+      const fromC = valid.find(c => c.field === 'from');
+      let guess = '';
+      if (fromC) {
+        const v = fromC.value.replace(/^["']+|["']+$/g, '');
+        const domainMatch = v.match(/@?([^@\s]+\.[^@\s]+)/);
+        const domain = domainMatch ? domainMatch[1] : v;
+        const base = domain.split('.')[0];
+        if (base) guess = base.charAt(0).toUpperCase() + base.slice(1);
+      }
+      if (guess) {
+        setName(guess);
+        setNameUserEdited(true);
+      }
+      return;
+    }
+
+    try {
+      const result = await suggestNameMutation.mutateAsync({
+        criteria: valid,
+        criteriaLogic,
+        action: selectedAction,
+        existingRuleNames: sweepRules.map(r => r.name).filter(Boolean),
+      });
+      if (result?.name) {
+        setName(result.name);
+        setNameUserEdited(true);
+      }
+    } catch (err) {
+      console.error('[Sweep] Name suggestion failed:', err);
+      setSuggestError('Could not generate a name.');
+    }
+  };
+
   const handleApply = async () => {
     const valid = criteria.filter(c => c.value.trim());
     if (valid.length === 0) return;
@@ -117,7 +173,7 @@ export function SweepRuleEditorScreen() {
       return;
     }
 
-    const ruleName = buildRuleName();
+    const ruleName = effectiveName;
     const effectiveDelay = mode === 'keep_newest' ? 0 : delayHours;
     const detail = mode === 'keep_newest'
       ? `Keep newest, ${subAction} rest immediately`
@@ -209,6 +265,28 @@ export function SweepRuleEditorScreen() {
           }
         />
         <div className="mobile-editor-body">
+          <div className="mobile-editor-field">
+            <label className="mobile-editor-label">Name</label>
+            <div className="mobile-editor-name-row">
+              <input
+                type="text"
+                className="mobile-editor-input"
+                value={nameUserEdited ? name : ''}
+                placeholder={derivedName}
+                onChange={(e) => { setName(e.target.value); setNameUserEdited(true); }}
+              />
+              <button
+                type="button"
+                className="mobile-editor-suggest"
+                onClick={handleSuggestName}
+                disabled={!hasValid || suggestNameMutation.isPending}
+              >
+                <Icons.Sparkle />
+                {suggestNameMutation.isPending ? '…' : 'Suggest'}
+              </button>
+            </div>
+            {suggestError && <div className="mobile-error" style={{ marginTop: 4 }}>{suggestError}</div>}
+          </div>
           <div className="mobile-editor-field">
             <div className="mobile-editor-label-row">
               <label className="mobile-editor-label">Match emails where</label>

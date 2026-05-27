@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Icons } from './ui/Icons.tsx';
 import { useStore } from '../store/index.ts';
 import { useAuth } from '../hooks/useAuth.ts';
 import { useCreateSweepRule, useUpdateSweepRule, useApplySweepRule } from '../hooks/useSweepRules.ts';
+import { useSuggestRuleName } from '../hooks/useSuggestions.ts';
 import type { Criterion } from '../types/index.ts';
 
 const useMockData = import.meta.env.VITE_USE_MOCK_DATA === 'true';
@@ -13,6 +14,7 @@ export function SweepRuleEditor() {
   const createSweepRuleMutation = useCreateSweepRule();
   const updateSweepRuleMutation = useUpdateSweepRule();
   const applySweepRuleMutation = useApplySweepRule();
+  const suggestNameMutation = useSuggestRuleName();
 
   const isEditMode = !!sweepRuleEditor?.ruleId;
 
@@ -22,12 +24,16 @@ export function SweepRuleEditor() {
   const [subAction, setSubAction] = useState<'archive' | 'delete'>('archive');
   const [delayHours, setDelayHours] = useState(sweepDelayHours);
   const [error, setError] = useState<string | null>(null);
+  const [name, setName] = useState('');
+  const [nameUserEdited, setNameUserEdited] = useState(false);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
 
   // Compute the compound action from mode + subAction
   const selectedAction = mode === 'keep_newest' ? `keep_newest_${subAction}` : subAction;
 
   useEffect(() => {
     if (sweepRuleEditor) {
+      setSuggestError(null);
       if (sweepRuleEditor.ruleId) {
         // Edit mode: pre-fill from existing rule
         const rule = sweepRules.find(r => r.id === sweepRuleEditor.ruleId);
@@ -43,6 +49,8 @@ export function SweepRuleEditor() {
             setSubAction(rule.action as 'archive' | 'delete');
           }
           setDelayHours(rule.delayHours);
+          setName(rule.name);
+          setNameUserEdited(true);
         }
       } else if (sweepRuleEditor.blank) {
         // Create mode: blank new rule
@@ -51,6 +59,8 @@ export function SweepRuleEditor() {
         setMode('always');
         setSubAction('archive');
         setDelayHours(sweepDelayHours);
+        setName('');
+        setNameUserEdited(false);
       } else if (sweepRuleEditor.columnId && !sweepRuleEditor.emailId) {
         // Create mode: pre-fill from stream column
         setCriteria([{ field: 'stream', op: 'equals', value: sweepRuleEditor.columnId }]);
@@ -58,6 +68,8 @@ export function SweepRuleEditor() {
         setMode('always');
         setSubAction('archive');
         setDelayHours(sweepDelayHours);
+        setName('');
+        setNameUserEdited(false);
       } else {
         // Create mode: pre-fill from email
         const initialValue = sweepRuleEditor.senderEmail || sweepRuleEditor.sender;
@@ -66,6 +78,8 @@ export function SweepRuleEditor() {
         setMode('always');
         setSubAction('archive');
         setDelayHours(sweepDelayHours);
+        setName('');
+        setNameUserEdited(false);
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -123,6 +137,53 @@ export function SweepRuleEditor() {
       .join(criteriaLogic === 'and' ? ' AND ' : ' OR ') || 'Untitled rule';
   };
 
+  const derivedName = useMemo(() => buildRuleName(), [criteria, criteriaLogic, columns]);
+  const effectiveName = nameUserEdited && name.trim() ? name.trim() : derivedName;
+
+  const handleSuggestName = async () => {
+    const validCriteria = criteria.filter(c => c.value.trim());
+    if (validCriteria.length === 0) return;
+    setSuggestError(null);
+
+    if (useMockData || !user?.id) {
+      // Heuristic fallback: derive from first 'from' criterion domain.
+      const fromC = validCriteria.find(c => c.field === 'from');
+      let guess = '';
+      if (fromC) {
+        const v = fromC.value.replace(/^["']+|["']+$/g, '');
+        const domainMatch = v.match(/@?([^@\s]+\.[^@\s]+)/);
+        const domain = domainMatch ? domainMatch[1] : v;
+        const base = domain.split('.')[0];
+        if (base) guess = base.charAt(0).toUpperCase() + base.slice(1);
+      }
+      if (!guess) {
+        const subjC = validCriteria.find(c => c.field === 'subject');
+        if (subjC) guess = subjC.value.split(/\s+/)[0] || '';
+      }
+      if (guess) {
+        setName(guess);
+        setNameUserEdited(true);
+      }
+      return;
+    }
+
+    try {
+      const result = await suggestNameMutation.mutateAsync({
+        criteria: validCriteria,
+        criteriaLogic,
+        action: selectedAction,
+        existingRuleNames: sweepRules.map(r => r.name).filter(Boolean),
+      });
+      if (result?.name) {
+        setName(result.name);
+        setNameUserEdited(true);
+      }
+    } catch (err) {
+      console.error('[Sweep] Name suggestion failed:', err);
+      setSuggestError('Could not generate a name. Try again.');
+    }
+  };
+
   const handleApply = async () => {
     const validCriteria = criteria.filter(c => c.value.trim());
     if (validCriteria.length === 0) return;
@@ -156,7 +217,7 @@ export function SweepRuleEditor() {
       return;
     }
 
-    const ruleName = buildRuleName();
+    const ruleName = effectiveName;
     const effectiveDelay = mode === 'keep_newest' ? 0 : delayHours;
     const detail = mode === 'keep_newest'
       ? `Keep newest, ${subAction} rest immediately`
@@ -282,6 +343,27 @@ export function SweepRuleEditor() {
         </div>
         {/* Body */}
         <div className="criteria-body">
+          {/* Name field with AI suggest */}
+          <div className="sweep-rule-name-field">
+            <input
+              className="filter-input"
+              value={nameUserEdited ? name : ''}
+              placeholder={derivedName}
+              onChange={(e) => { setName(e.target.value); setNameUserEdited(true); }}
+              style={{ flex: 1 }}
+            />
+            <button
+              className="btn-secondary suggest-name-btn"
+              onClick={handleSuggestName}
+              disabled={!hasValidCriteria || suggestNameMutation.isPending}
+              title="Suggest a name with AI"
+              type="button"
+            >
+              <Icons.Sparkle />
+              {suggestNameMutation.isPending ? 'Thinking...' : 'Suggest'}
+            </button>
+          </div>
+          {suggestError && <div style={{ padding: '0 0 8px', color: '#ef4444', fontSize: '11px' }}>{suggestError}</div>}
           {/* Criteria builder */}
           <div className="filter-group">
             <div className="filter-group-header">

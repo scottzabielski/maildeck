@@ -1857,3 +1857,79 @@ body.is-mobile .sync-error-banner-actions {
 .mobile-placeholder-button:active {
   opacity: 0.8;
 }
+
+/* ============================================================
+   Mobile editor — name field with AI suggest
+   ============================================================ */
+.mobile-editor-name-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.mobile-editor-name-row .mobile-editor-input { flex: 1; }
+
+.mobile-editor-suggest {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border-medium);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  min-height: 44px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.mobile-editor-suggest:disabled {
+  opacity: 0.5;
+}
+
+/* ============================================================
+   Mobile suggestions screen
+   ============================================================ */
+.mobile-suggestions-body {
+  padding: 12px 12px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mobile-suggestions-loading,
+.mobile-suggestions-empty {
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: 14px;
+  padding: 40px 16px;
+}
+
+.mobile-suggestions-error {
+  color: #ef4444;
+  font-size: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.mobile-ai-review-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  justify-content: center;
+  padding: 12px 16px;
+  margin-top: 8px;
+  border-radius: 10px;
+  border: 1px solid var(--border-medium);
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.06), rgba(59, 130, 246, 0.04));
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.mobile-ai-review-btn:disabled { opacity: 0.5; }

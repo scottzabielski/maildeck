@@ -7,6 +7,7 @@ import { useDeleteSweepRule } from '../hooks/useSweepRules.ts';
 import { useDeleteColumn } from '../hooks/useColumns.ts';
 import { useDeleteEmailAccount } from '../hooks/useEmailAccounts.ts';
 import { ConnectAccountFlow } from './settings/ConnectAccountFlow.tsx';
+import { SweepSuggestionsModal } from './SweepSuggestionsModal.tsx';
 import { connectGmailAccount, connectOutlookAccount } from '../lib/oauth.ts';
 import type { Account, Column as ColumnType, Criterion, SweepRule } from '../types/index.ts';
 
@@ -311,6 +312,7 @@ function SettingsSweepRules({ sweepRules, toggleSweepRule }: { sweepRules: Sweep
   const { user } = useAuth();
   const deleteMutation = useDeleteSweepRule();
   const [search, setSearch] = useState('');
+  const [aiReviewOpen, setAiReviewOpen] = useState(false);
 
   const filteredRules = search
     ? sweepRules.filter(rule => ruleMatchesSearch(rule.name, rule.criteria, search))
@@ -356,9 +358,20 @@ function SettingsSweepRules({ sweepRules, toggleSweepRule }: { sweepRules: Sweep
         onChange={e => setSearch(e.target.value)}
         style={{ width: '100%', marginBottom: 8 }}
       />
-      <button className="settings-add-btn" onClick={openNewSweepRuleEditor} style={{ marginBottom: 8 }}>
-        <Icons.Plus /> Add Rule
-      </button>
+      <div className="sweep-rules-toolbar">
+        <button className="settings-add-btn" onClick={openNewSweepRuleEditor}>
+          <Icons.Plus /> Add Rule
+        </button>
+        <button
+          className="settings-add-btn settings-ai-review-btn"
+          onClick={() => setAiReviewOpen(true)}
+          disabled={sweepRules.length < 2}
+          title={sweepRules.length < 2 ? 'Need at least 2 rules to review' : 'Review rules with AI'}
+        >
+          <Icons.Sparkle /> Review with AI
+        </button>
+      </div>
+      <SweepSuggestionsModal open={aiReviewOpen} onClose={() => setAiReviewOpen(false)} />
       <div className="settings-card">
         {filteredRules.map(rule => (
           <div key={rule.id} className="sweep-rule">

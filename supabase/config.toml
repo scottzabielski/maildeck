@@ -415,6 +415,12 @@ verify_jwt = false
 [functions.token-refresh]
 verify_jwt = false
 
+[functions.suggest-rule-name]
+verify_jwt = false
+
+[functions.suggest-sweep-consolidations]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327
