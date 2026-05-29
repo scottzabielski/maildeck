@@ -99,6 +99,31 @@ export function SweepRuleEditor() {
       .join(criteriaLogic === 'and' ? ' AND ' : ' OR ') || 'Untitled rule';
   }, [criteria, criteriaLogic, columns]);
 
+  // Auto-suggest a name in the background as the user fills out criteria.
+  // Hooks must run unconditionally — keep this above the editor-closed early
+  // return. The effect itself bails when the editor is closed or in edit mode.
+  const lastAutoCriteriaKey = useRef<string>('');
+  useEffect(() => {
+    if (!sweepRuleEditor) return;
+    if (isEditMode) return;
+    if (nameUserEdited) return;
+    const valid = criteria.filter(c => c.value.trim());
+    if (valid.length === 0) return;
+    const key = valid.map(c => `${c.field}|${c.op}|${c.value.trim().toLowerCase()}`).sort().join('\n') + `::${criteriaLogic}::${selectedAction}`;
+    if (key === lastAutoCriteriaKey.current) return;
+
+    const handle = setTimeout(() => {
+      lastAutoCriteriaKey.current = key;
+      runSuggestNameRef.current?.(false);
+    }, 800);
+    return () => clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [criteria, criteriaLogic, selectedAction, nameUserEdited, isEditMode, sweepRuleEditor]);
+
+  // Forward-ref the suggest fn so the effect above can call it without
+  // depending on its identity (which would change every render).
+  const runSuggestNameRef = useRef<((markAsUserEdited: boolean) => Promise<void>) | null>(null);
+
   if (!sweepRuleEditor) return null;
 
   const isDanger = subAction === 'delete';
@@ -184,26 +209,7 @@ export function SweepRuleEditor() {
   };
 
   const handleSuggestName = () => runSuggestName(true);
-
-  // Auto-suggest a name in the background as the user fills out criteria.
-  // Skips: edit mode (existing name), user-typed names, and empty criteria.
-  // Debounced so quick keystrokes don't fire multiple API calls.
-  const lastAutoCriteriaKey = useRef<string>('');
-  useEffect(() => {
-    if (isEditMode) return;
-    if (nameUserEdited) return;
-    const valid = criteria.filter(c => c.value.trim());
-    if (valid.length === 0) return;
-    const key = valid.map(c => `${c.field}|${c.op}|${c.value.trim().toLowerCase()}`).sort().join('\n') + `::${criteriaLogic}::${selectedAction}`;
-    if (key === lastAutoCriteriaKey.current) return;
-
-    const handle = setTimeout(() => {
-      lastAutoCriteriaKey.current = key;
-      runSuggestName(false);
-    }, 800);
-    return () => clearTimeout(handle);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [criteria, criteriaLogic, selectedAction, nameUserEdited, isEditMode]);
+  runSuggestNameRef.current = runSuggestName;
 
   const handleApply = async () => {
     const validCriteria = criteria.filter(c => c.value.trim());

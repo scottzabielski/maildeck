@@ -101,6 +101,26 @@ export function SweepRuleEditorScreen() {
       .join(criteriaLogic === 'and' ? ' AND ' : ' OR ') || 'Untitled rule';
   }, [criteria, criteriaLogic, columns]);
 
+  const lastAutoCriteriaKey = useRef<string>('');
+  useEffect(() => {
+    if (!sweepRuleEditor) return;
+    if (isEditMode) return;
+    if (nameUserEdited) return;
+    const valid = criteria.filter(c => c.value.trim());
+    if (valid.length === 0) return;
+    const key = valid.map(c => `${c.field}|${c.op}|${c.value.trim().toLowerCase()}`).sort().join('\n') + `::${criteriaLogic}::${selectedAction}`;
+    if (key === lastAutoCriteriaKey.current) return;
+
+    const handle = setTimeout(() => {
+      lastAutoCriteriaKey.current = key;
+      runSuggestNameRef.current?.(false);
+    }, 800);
+    return () => clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [criteria, criteriaLogic, selectedAction, nameUserEdited, isEditMode, sweepRuleEditor]);
+
+  const runSuggestNameRef = useRef<((markAsUserEdited: boolean) => Promise<void>) | null>(null);
+
   if (!sweepRuleEditor) return null;
 
   const addRow = () => setCriteria(prev => [...prev, { field: 'from', op: 'contains', value: '' }]);
@@ -155,23 +175,7 @@ export function SweepRuleEditorScreen() {
   };
 
   const handleSuggestName = () => runSuggestName(true);
-
-  const lastAutoCriteriaKey = useRef<string>('');
-  useEffect(() => {
-    if (isEditMode) return;
-    if (nameUserEdited) return;
-    const valid = criteria.filter(c => c.value.trim());
-    if (valid.length === 0) return;
-    const key = valid.map(c => `${c.field}|${c.op}|${c.value.trim().toLowerCase()}`).sort().join('\n') + `::${criteriaLogic}::${selectedAction}`;
-    if (key === lastAutoCriteriaKey.current) return;
-
-    const handle = setTimeout(() => {
-      lastAutoCriteriaKey.current = key;
-      runSuggestName(false);
-    }, 800);
-    return () => clearTimeout(handle);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [criteria, criteriaLogic, selectedAction, nameUserEdited, isEditMode]);
+  runSuggestNameRef.current = runSuggestName;
 
   const handleApply = async () => {
     const valid = criteria.filter(c => c.value.trim());
