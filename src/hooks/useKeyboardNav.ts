@@ -38,38 +38,44 @@ export function useKeyboardNav() {
         e.preventDefault();
         const direction = e.key === 'ArrowUp' ? -1 : 1;
 
-        if (!highlightedEmail) {
-          // Nothing highlighted — highlight the first email of the first column
+        // Pick an anchor: prefer existing highlight; otherwise fall back to
+        // the viewer's current email so arrow keys navigate the column the
+        // viewer is showing, not the first column on screen.
+        const anchor = highlightedEmail
+          ? { emailId: highlightedEmail.emailId, columnId: highlightedEmail.columnId, accountId: highlightedEmail.accountId }
+          : (viewerOpen && selectedEmail
+              ? { emailId: selectedEmail.emailId, columnId: selectedEmail.sourceColumnId, accountId: selectedEmail.sourceAccountId }
+              : null);
+
+        if (!anchor) {
+          // Nothing highlighted and no viewer — highlight the first email of the first column
           const entries = getColumnEntries();
           for (const entry of entries) {
             if (entry.emailIds.length > 0) {
               const emailId = entry.emailIds[0];
               state.highlightEmail(emailId, entry.columnId, entry.accountId || '');
               scrollToEmail(emailId);
-              if (viewerOpen) {
-                state.selectEmail(emailId, entry.columnId, entry.accountId || '');
-              }
               return;
             }
           }
           return;
         }
 
-        const entry = getColumnEntry(highlightedEmail.columnId);
+        const entry = getColumnEntry(anchor.columnId);
         if (!entry) return;
 
-        const currentIdx = entry.emailIds.indexOf(highlightedEmail.emailId);
+        const currentIdx = entry.emailIds.indexOf(anchor.emailId);
         if (currentIdx === -1) return;
 
         const nextIdx = currentIdx + direction;
         if (nextIdx < 0 || nextIdx >= entry.emailIds.length) return;
 
         const nextEmailId = entry.emailIds[nextIdx];
-        state.highlightEmail(nextEmailId, entry.columnId, entry.accountId || highlightedEmail.accountId);
+        state.highlightEmail(nextEmailId, entry.columnId, entry.accountId || anchor.accountId);
         scrollToEmail(nextEmailId);
 
         if (viewerOpen) {
-          state.selectEmail(nextEmailId, entry.columnId, entry.accountId || highlightedEmail.accountId);
+          state.selectEmail(nextEmailId, entry.columnId, entry.accountId || anchor.accountId);
         }
         return;
       }
