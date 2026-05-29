@@ -54,7 +54,14 @@ export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, 
       rangeSelect(email.id, columnId || email.columnId);
     } else {
       clearMultiSelect();
-      highlightEmail(email.id, columnId || email.columnId, sourceAccountId || email.accountId);
+      // If the viewer is already open, swap to this email instead of just
+      // highlighting — saves a click. Otherwise keep the highlight-only
+      // behavior so the list stays browsable without committing to a viewer.
+      if (selectedEmailId) {
+        selectEmail(email.id, columnId || email.columnId, sourceAccountId || email.accountId);
+      } else {
+        highlightEmail(email.id, columnId || email.columnId, sourceAccountId || email.accountId);
+      }
     }
   };
 
