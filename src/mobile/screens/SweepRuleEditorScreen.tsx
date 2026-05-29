@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Icons } from '../../components/ui/Icons.tsx';
 import { useStore } from '../../store/index.ts';
 import { useAuth } from '../../hooks/useAuth.ts';
@@ -113,9 +113,9 @@ export function SweepRuleEditorScreen() {
     }));
   };
 
-  const effectiveName = nameUserEdited && name.trim() ? name.trim() : derivedName;
+  const effectiveName = (nameUserEdited || name) && name.trim() ? name.trim() : derivedName;
 
-  const handleSuggestName = async () => {
+  const runSuggestName = async (markAsUserEdited: boolean) => {
     const valid = criteria.filter(c => c.value.trim());
     if (valid.length === 0) return;
     setSuggestError(null);
@@ -132,7 +132,7 @@ export function SweepRuleEditorScreen() {
       }
       if (guess) {
         setName(guess);
-        setNameUserEdited(true);
+        if (markAsUserEdited) setNameUserEdited(true);
       }
       return;
     }
@@ -146,13 +146,32 @@ export function SweepRuleEditorScreen() {
       });
       if (result?.name) {
         setName(result.name);
-        setNameUserEdited(true);
+        if (markAsUserEdited) setNameUserEdited(true);
       }
     } catch (err) {
       console.error('[Sweep] Name suggestion failed:', err);
-      setSuggestError('Could not generate a name.');
+      if (markAsUserEdited) setSuggestError('Could not generate a name.');
     }
   };
+
+  const handleSuggestName = () => runSuggestName(true);
+
+  const lastAutoCriteriaKey = useRef<string>('');
+  useEffect(() => {
+    if (isEditMode) return;
+    if (nameUserEdited) return;
+    const valid = criteria.filter(c => c.value.trim());
+    if (valid.length === 0) return;
+    const key = valid.map(c => `${c.field}|${c.op}|${c.value.trim().toLowerCase()}`).sort().join('\n') + `::${criteriaLogic}::${selectedAction}`;
+    if (key === lastAutoCriteriaKey.current) return;
+
+    const handle = setTimeout(() => {
+      lastAutoCriteriaKey.current = key;
+      runSuggestName(false);
+    }, 800);
+    return () => clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [criteria, criteriaLogic, selectedAction, nameUserEdited, isEditMode]);
 
   const handleApply = async () => {
     const valid = criteria.filter(c => c.value.trim());
@@ -270,8 +289,8 @@ export function SweepRuleEditorScreen() {
               <input
                 type="text"
                 className="mobile-editor-input"
-                value={nameUserEdited ? name : ''}
-                placeholder={derivedName}
+                value={name}
+                placeholder={suggestNameMutation.isPending ? 'Thinking…' : derivedName}
                 onChange={(e) => { setName(e.target.value); setNameUserEdited(true); }}
               />
               <button

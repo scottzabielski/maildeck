@@ -104,7 +104,7 @@ Deno.serve(async (req) => {
       throw err;
     }
 
-    const name = sanitizeShort(result?.name, 60) || 'Untitled rule';
+    const name = stripFillerWords(sanitizeShort(result?.name, 60)) || 'Untitled rule';
     const detail = sanitizeShort(result?.detail, 120) || '';
     return jsonResponse({ name, detail });
   } catch (err) {
@@ -125,6 +125,7 @@ Return STRICT JSON: { "name": string, "detail": string }
 - name: 1-4 words, human-friendly, the kind of thing a user would write themselves. Examples: "Stripe receipts", "Newsletters", "Marketing".
 - detail: 1 short sentence describing what the rule does (action + scope). Example: "Archive payment confirmations after 24h".
 - No markdown, no quotes around values, no trailing punctuation in the name.
+- NEVER use the words "messages", "message", "emails", or "email" in the name — that's implied by context. Just say "Newsletters", not "Newsletter emails"; "Stripe receipts", not "Stripe receipt messages".
 - If sampleSenders strongly suggests a category, name by category, not by domain.
 - If the rule looks like junk/promo, prefer category words like "Promotions", "Marketing", "Newsletters".
 
@@ -173,6 +174,15 @@ async function fetchSampleSenders(userId: string, criteria: Criterion[]): Promis
 function sanitizeShort(s: unknown, max: number): string {
   if (typeof s !== 'string') return '';
   return s.replace(/[\r\n]+/g, ' ').trim().slice(0, max);
+}
+
+// Strip "messages" / "emails" / "mail" filler from the name — they're implied
+// by context. e.g. "Newsletter emails" -> "Newsletters", "Stripe messages" -> "Stripe".
+function stripFillerWords(s: string): string {
+  let out = s.replace(/\b(messages?|e-?mails?|mail)\b/gi, '').replace(/\s+/g, ' ').trim();
+  // Drop trailing connector words left behind (e.g. "Stripe payment" stays, but "Stripe of" -> "Stripe")
+  out = out.replace(/\s+(from|of|for|to|the|a|an)$/i, '');
+  return out.trim();
 }
 
 function jsonResponse(body: unknown, status = 200) {
