@@ -351,6 +351,15 @@ function SettingsSweepRules({ sweepRules, toggleSweepRule }: { sweepRules: Sweep
         </div>
       </div>
       <div className="settings-content-title" style={{ marginTop: '20px' }}>Rules</div>
+      <button
+        className="settings-add-btn settings-ai-review-btn"
+        onClick={() => setAiReviewOpen(true)}
+        disabled={sweepRules.length < 2}
+        title={sweepRules.length < 2 ? 'Need at least 2 rules to review' : 'Review rules with AI'}
+        style={{ marginBottom: 8 }}
+      >
+        <Icons.Sparkle /> Review with AI
+      </button>
       <input
         className="filter-input"
         placeholder="Search rules..."
@@ -358,19 +367,9 @@ function SettingsSweepRules({ sweepRules, toggleSweepRule }: { sweepRules: Sweep
         onChange={e => setSearch(e.target.value)}
         style={{ width: '100%', marginBottom: 8 }}
       />
-      <div className="sweep-rules-toolbar">
-        <button className="settings-add-btn" onClick={openNewSweepRuleEditor}>
-          <Icons.Plus /> Add Rule
-        </button>
-        <button
-          className="settings-add-btn settings-ai-review-btn"
-          onClick={() => setAiReviewOpen(true)}
-          disabled={sweepRules.length < 2}
-          title={sweepRules.length < 2 ? 'Need at least 2 rules to review' : 'Review rules with AI'}
-        >
-          <Icons.Sparkle /> Review with AI
-        </button>
-      </div>
+      <button className="settings-add-btn" onClick={openNewSweepRuleEditor} style={{ marginBottom: 8 }}>
+        <Icons.Plus /> Add Rule
+      </button>
       <SweepSuggestionsModal open={aiReviewOpen} onClose={() => setAiReviewOpen(false)} />
       <div className="settings-card">
         {filteredRules.map(rule => (

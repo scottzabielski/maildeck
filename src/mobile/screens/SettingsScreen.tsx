@@ -26,21 +26,16 @@ const SECTIONS: Array<{ id: SettingsSubScreen; name: string; icon: string; desc:
 
 export function SettingsScreen() {
   const toggleSettings = useStore(s => s.toggleSettings);
-  const settingsSection = useStore(s => s.settingsSection);
   const setSettingsSection = useStore(s => s.setSettingsSection);
 
-  // Pick the initial sub-screen from the store's `settingsSection` if it's
-  // valid — that's how the desktop SettingsPanel decides which section opens.
-  const initialSub: SettingsSubScreen =
-    SECTIONS.some(s => s.id === settingsSection)
-      ? (settingsSection as SettingsSubScreen)
-      : 'root';
-
-  const [sub, setSub] = useState<SettingsSubScreen>(initialSub);
+  // On mobile, the settings icon should always open the menu of sections,
+  // not auto-route to whichever was last viewed (which is the desktop behavior
+  // because its panel is a sidebar that needs something selected).
+  const [sub, setSub] = useState<SettingsSubScreen>('root');
 
   const close = () => {
     toggleSettings();
-    setSettingsSection('accounts'); // reset for next open
+    setSettingsSection('accounts'); // keep desktop default in sync
     setSub('root');
   };
 

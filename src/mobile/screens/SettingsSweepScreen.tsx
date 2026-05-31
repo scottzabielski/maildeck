@@ -70,6 +70,14 @@ export function SettingsSweepScreen() {
       <div className="mobile-settings-header" style={{ marginTop: 16 }}>
         <div className="mobile-settings-header-text">Rules</div>
       </div>
+      <button
+        type="button"
+        className="mobile-ai-review-btn"
+        onClick={() => setAiReviewOpen(true)}
+        disabled={sweepRules.length < 2}
+      >
+        <Icons.Sparkle /> Review with AI
+      </button>
       <div className="mobile-settings-card">
         {sweepRules.map(rule => (
           <div key={rule.id} className="mobile-settings-row mobile-settings-rule-row">
@@ -118,15 +126,6 @@ export function SettingsSweepScreen() {
           <Icons.Plus /> Add rule
         </button>
       </div>
-
-      <button
-        type="button"
-        className="mobile-ai-review-btn"
-        onClick={() => setAiReviewOpen(true)}
-        disabled={sweepRules.length < 2}
-      >
-        <Icons.Sparkle /> Review with AI
-      </button>
 
       {aiReviewOpen && <SweepSuggestionsScreen onClose={() => setAiReviewOpen(false)} />}
     </div>
