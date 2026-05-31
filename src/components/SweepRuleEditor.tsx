@@ -151,11 +151,23 @@ export function SweepRuleEditor() {
   const updateRow = (i: number, key: keyof Criterion, val: string) => {
     setCriteria(criteria.map((r, idx) => {
       if (idx !== i) return r;
-      // When field changes, auto-fill value if it's empty or was a prefill from the previous field
+      // When field changes, swap to that field's value on the source email if
+      // there is one. If there's no source email, only auto-clear when the
+      // current value was a prefill from the previous field — never wipe the
+      // user's typed value to empty.
       if (key === 'field') {
-        const wasEmpty = !r.value.trim();
+        const nextSourceValue = prefillForField(val);
         const wasPrefill = prefillValues.has(r.value);
-        const newValue = (wasEmpty || wasPrefill) ? prefillForField(val) : (val === 'stream' ? '' : r.value);
+        let newValue: string;
+        if (val === 'stream') {
+          newValue = nextSourceValue;
+        } else if (nextSourceValue) {
+          newValue = nextSourceValue;
+        } else if (wasPrefill) {
+          newValue = '';
+        } else {
+          newValue = r.value;
+        }
         return { ...r, field: val, op: val === 'stream' ? 'equals' : r.op, value: newValue };
       }
       return { ...r, [key]: val };

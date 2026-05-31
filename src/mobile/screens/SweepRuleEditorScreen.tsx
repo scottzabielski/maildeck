@@ -123,12 +123,44 @@ export function SweepRuleEditorScreen() {
 
   if (!sweepRuleEditor) return null;
 
+  // Mirror the desktop prefill helpers: when the user switches the criterion
+  // field, swap the value to the matching attribute of the source email.
+  const prefillForField = (field: string): string => {
+    if (!sweepRuleEditor) return '';
+    switch (field) {
+      case 'from': return sweepRuleEditor.senderEmail || sweepRuleEditor.sender;
+      case 'to': return sweepRuleEditor.toEmail;
+      case 'subject': return sweepRuleEditor.subject;
+      case 'stream': return sweepRuleEditor.columnId || '';
+      default: return '';
+    }
+  };
+  const prefillValues = new Set([
+    sweepRuleEditor?.senderEmail || sweepRuleEditor?.sender,
+    sweepRuleEditor?.subject,
+    sweepRuleEditor?.toEmail,
+  ].filter(Boolean));
+
   const addRow = () => setCriteria(prev => [...prev, { field: 'from', op: 'contains', value: '' }]);
   const removeRow = (i: number) => setCriteria(prev => prev.filter((_, idx) => idx !== i));
   const updateRow = (i: number, key: keyof Criterion, val: string) => {
     setCriteria(prev => prev.map((r, idx) => {
       if (idx !== i) return r;
-      if (key === 'field' && val === 'stream') return { ...r, field: val, op: 'equals', value: '' };
+      if (key === 'field') {
+        const nextSourceValue = prefillForField(val);
+        const wasPrefill = prefillValues.has(r.value);
+        let newValue: string;
+        if (val === 'stream') {
+          newValue = nextSourceValue;
+        } else if (nextSourceValue) {
+          newValue = nextSourceValue;
+        } else if (wasPrefill) {
+          newValue = '';
+        } else {
+          newValue = r.value;
+        }
+        return { ...r, field: val, op: val === 'stream' ? 'equals' : r.op, value: newValue };
+      }
       return { ...r, [key]: val };
     }));
   };
