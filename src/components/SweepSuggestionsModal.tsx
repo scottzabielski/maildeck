@@ -49,13 +49,25 @@ export function SweepSuggestionsModal({ open, onClose }: Props) {
     return m;
   }, [sweepRules]);
 
+  // Reset when the modal opens.
   useEffect(() => {
     if (!open) return;
     setError(null);
     setSuggestions([]);
-    if (useMockData || !user?.id) {
-      console.warn('[AI Review] Using mock/local heuristic only.', { useMockData, hasUser: !!user?.id });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // Fetch suggestions when modal is open AND auth is ready. Re-fires if auth
+  // hydrates after the modal opens (mobile session restore can land late).
+  useEffect(() => {
+    if (!open) return;
+    if (useMockData) {
+      console.warn('[AI Review] Mock data mode.');
       runMockSuggestions(sweepRules).then(setSuggestions);
+      return;
+    }
+    if (!user?.id) {
+      console.log('[AI Review] Waiting for auth...');
       return;
     }
     console.log('[AI Review] Calling suggest-sweep-consolidations edge function...');
@@ -70,7 +82,7 @@ export function SweepSuggestionsModal({ open, onClose }: Props) {
       },
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, user?.id]);
 
   if (!open) return null;
 

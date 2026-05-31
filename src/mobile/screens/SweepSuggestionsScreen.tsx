@@ -49,9 +49,16 @@ export function SweepSuggestionsScreen({ onClose }: Props) {
 
   useEffect(() => {
     setError(null);
-    if (useMockData || !user?.id) {
-      console.warn('[AI Review mobile] Using mock/local heuristic only.', { useMockData, hasUser: !!user?.id });
+    if (useMockData) {
+      console.warn('[AI Review mobile] Mock data mode.');
       runMockSuggestions(sweepRules).then(setSuggestions);
+      return;
+    }
+    // Wait for auth to load before deciding which path to take. On mobile the
+    // session can hydrate a tick after the screen mounts; if we ran the mock
+    // path immediately we'd never reach the real LLM.
+    if (!user?.id) {
+      console.log('[AI Review mobile] Waiting for auth...');
       return;
     }
     console.log('[AI Review mobile] Calling suggest-sweep-consolidations edge function...');
@@ -66,7 +73,7 @@ export function SweepSuggestionsScreen({ onClose }: Props) {
       },
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [user?.id]);
 
   const handleDismiss = async (suggestion: Suggestion) => {
     setSuggestions(prev => prev.filter(s => s.hash !== suggestion.hash));
