@@ -260,8 +260,24 @@ export function SweepRuleEditorScreen() {
       } catch (err) {
         console.error('[Sweep] Apply failed:', err);
       }
+      // Mirror the DB row into the in-memory store with its real UUID;
+      // addSweepRule would mint a phantom "sr-..." id and double the row.
       applySweepAction(valid, criteriaLogic, selectedAction, effectiveDelay);
-      addSweepRule({ name: ruleName, detail, criteria: valid, criteriaLogic, action: selectedAction, delayHours: effectiveDelay });
+      useStore.setState(s => ({
+        sweepRules: [
+          ...s.sweepRules,
+          {
+            id: created.id,
+            name: ruleName,
+            detail,
+            enabled: true,
+            criteria: valid,
+            criteriaLogic,
+            action: selectedAction,
+            delayHours: effectiveDelay,
+          },
+        ],
+      }));
     }
     closeSweepRuleEditor();
   };

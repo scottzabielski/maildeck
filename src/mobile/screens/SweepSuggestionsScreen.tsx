@@ -16,6 +16,9 @@ import type { Suggestion, SweepRule } from '../../types/index.ts';
 
 const useMockData = import.meta.env.VITE_USE_MOCK_DATA === 'true';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const isPersistedId = (id: string) => UUID_RE.test(id);
+
 interface Props {
   onClose: () => void;
 }
@@ -98,7 +101,7 @@ export function SweepSuggestionsScreen({ onClose }: Props) {
       if (!newName) throw new Error('No proposed name');
       const newDetail = suggestion.proposedRule?.detail?.trim() ?? target.detail;
       updateSweepRuleLocal(target.id, { name: newName, detail: newDetail });
-      if (!useMockData && user?.id) {
+      if (!useMockData && user?.id && isPersistedId(target.id)) {
         await updateRuleMutation.mutateAsync({
           id: target.id,
           user_id: user.id,
@@ -116,7 +119,7 @@ export function SweepSuggestionsScreen({ onClose }: Props) {
       const deleted: SweepRule[] = [];
       try {
         for (const r of toDelete) {
-          if (!useMockData && user?.id) {
+          if (!useMockData && user?.id && isPersistedId(r.id)) {
             await deleteRuleMutation.mutateAsync({ id: r.id, userId: user.id });
           }
           useStore.setState(s => ({ sweepRules: s.sweepRules.filter(x => x.id !== r.id) }));
@@ -178,7 +181,7 @@ export function SweepSuggestionsScreen({ onClose }: Props) {
         }
 
         for (const r of sources) {
-          if (!useMockData && user?.id) {
+          if (!useMockData && user?.id && isPersistedId(r.id)) {
             await deleteRuleMutation.mutateAsync({ id: r.id, userId: user.id });
           }
           useStore.setState(s => ({ sweepRules: s.sweepRules.filter(x => x.id !== r.id) }));
@@ -219,7 +222,7 @@ export function SweepSuggestionsScreen({ onClose }: Props) {
 
       try {
         updateSweepRuleLocal(keeper.id, { criteria: newCriteria, criteriaLogic: newLogic });
-        if (!useMockData && user?.id) {
+        if (!useMockData && user?.id && isPersistedId(keeper.id)) {
           await updateRuleMutation.mutateAsync({
             id: keeper.id,
             user_id: user.id,
@@ -228,7 +231,7 @@ export function SweepSuggestionsScreen({ onClose }: Props) {
           });
         }
         for (const r of absorbed) {
-          if (!useMockData && user?.id) {
+          if (!useMockData && user?.id && isPersistedId(r.id)) {
             await deleteRuleMutation.mutateAsync({ id: r.id, userId: user.id });
           }
           useStore.setState(s => ({ sweepRules: s.sweepRules.filter(x => x.id !== r.id) }));

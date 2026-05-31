@@ -334,9 +334,26 @@ export function SweepRuleEditor() {
         console.error('[Sweep] Edge function apply failed:', err);
       }
 
-      // Also update in-memory store immediately for instant UI feedback
+      // Mirror the real DB row into the in-memory store with its real UUID so
+      // the UI updates immediately without waiting on the React Query refetch.
+      // Previously we called addSweepRule() which minted a phantom "sr-..." id,
+      // producing a duplicate row that broke any later DB op (e.g., delete).
       applySweepAction(validCriteria, criteriaLogic, selectedAction, effectiveDelay);
-      addSweepRule({ name: ruleName, detail, criteria: validCriteria, criteriaLogic, action: selectedAction, delayHours: effectiveDelay });
+      useStore.setState(s => ({
+        sweepRules: [
+          ...s.sweepRules,
+          {
+            id: createdRule.id,
+            name: ruleName,
+            detail,
+            enabled: true,
+            criteria: validCriteria,
+            criteriaLogic,
+            action: selectedAction,
+            delayHours: effectiveDelay,
+          },
+        ],
+      }));
     }
 
     closeSweepRuleEditor();
