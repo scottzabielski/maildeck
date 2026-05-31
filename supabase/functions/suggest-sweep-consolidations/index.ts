@@ -73,7 +73,6 @@ Deno.serve(async (req) => {
 
     // LLM pass — gated so we can ship the deterministic checks alone.
     const llmEnabled = Deno.env.get('SUGGEST_LLM_ENABLED') === 'true';
-    console.log('[suggest-sweep-consolidations] rules:', rules.length, 'deterministic:', suggestions.length, 'llmEnabled:', llmEnabled);
     if (llmEnabled) {
       try {
         const sampleSendersByRule = await fetchSampleSendersByRule(admin, user_id, rules);

@@ -62,24 +62,13 @@ export function SweepSuggestionsModal({ open, onClose }: Props) {
   useEffect(() => {
     if (!open) return;
     if (useMockData) {
-      console.warn('[AI Review] Mock data mode.');
       runMockSuggestions(sweepRules).then(setSuggestions);
       return;
     }
-    if (!user?.id) {
-      console.log('[AI Review] Waiting for auth...');
-      return;
-    }
-    console.log('[AI Review] Calling suggest-sweep-consolidations edge function...');
+    if (!user?.id) return;
     consolidationsMutation.mutate(undefined, {
-      onSuccess: (data) => {
-        console.log('[AI Review] Edge function returned', data?.suggestions?.length ?? 0, 'suggestions', data);
-        setSuggestions(data?.suggestions ?? []);
-      },
-      onError: (err) => {
-        console.error('[AI Review] Edge function error:', err);
-        setError((err as Error).message);
-      },
+      onSuccess: (data) => setSuggestions(data?.suggestions ?? []),
+      onError: (err) => setError((err as Error).message),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, user?.id]);

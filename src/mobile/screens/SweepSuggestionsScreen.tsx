@@ -50,27 +50,15 @@ export function SweepSuggestionsScreen({ onClose }: Props) {
   useEffect(() => {
     setError(null);
     if (useMockData) {
-      console.warn('[AI Review mobile] Mock data mode.');
       runMockSuggestions(sweepRules).then(setSuggestions);
       return;
     }
-    // Wait for auth to load before deciding which path to take. On mobile the
-    // session can hydrate a tick after the screen mounts; if we ran the mock
-    // path immediately we'd never reach the real LLM.
-    if (!user?.id) {
-      console.log('[AI Review mobile] Waiting for auth...');
-      return;
-    }
-    console.log('[AI Review mobile] Calling suggest-sweep-consolidations edge function...');
+    // Wait for auth to hydrate. On mobile the session can land a tick after
+    // mount; bailing early to the mock path would silently skip the LLM.
+    if (!user?.id) return;
     consolidationsMutation.mutate(undefined, {
-      onSuccess: (data) => {
-        console.log('[AI Review mobile] Edge function returned', data?.suggestions?.length ?? 0, 'suggestions', data);
-        setSuggestions(data?.suggestions ?? []);
-      },
-      onError: (err) => {
-        console.error('[AI Review mobile] Edge function error:', err);
-        setError((err as Error).message);
-      },
+      onSuccess: (data) => setSuggestions(data?.suggestions ?? []),
+      onError: (err) => setError((err as Error).message),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
