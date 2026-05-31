@@ -50,12 +50,20 @@ export function SweepSuggestionsScreen({ onClose }: Props) {
   useEffect(() => {
     setError(null);
     if (useMockData || !user?.id) {
+      console.warn('[AI Review mobile] Using mock/local heuristic only.', { useMockData, hasUser: !!user?.id });
       runMockSuggestions(sweepRules).then(setSuggestions);
       return;
     }
+    console.log('[AI Review mobile] Calling suggest-sweep-consolidations edge function...');
     consolidationsMutation.mutate(undefined, {
-      onSuccess: (data) => setSuggestions(data?.suggestions ?? []),
-      onError: (err) => setError((err as Error).message),
+      onSuccess: (data) => {
+        console.log('[AI Review mobile] Edge function returned', data?.suggestions?.length ?? 0, 'suggestions', data);
+        setSuggestions(data?.suggestions ?? []);
+      },
+      onError: (err) => {
+        console.error('[AI Review mobile] Edge function error:', err);
+        setError((err as Error).message);
+      },
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
