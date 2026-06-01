@@ -103,6 +103,11 @@ export function SweepRuleEditor() {
   // Hooks must run unconditionally — keep this above the editor-closed early
   // return. The effect itself bails when the editor is closed or in edit mode.
   const lastAutoCriteriaKey = useRef<string>('');
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => { isMountedRef.current = false; };
+  }, []);
   useEffect(() => {
     if (!sweepRuleEditor) return;
     if (isEditMode) return;
@@ -113,6 +118,7 @@ export function SweepRuleEditor() {
     if (key === lastAutoCriteriaKey.current) return;
 
     const handle = setTimeout(() => {
+      if (!isMountedRef.current) return;
       lastAutoCriteriaKey.current = key;
       runSuggestNameRef.current?.(false);
     }, 800);
@@ -210,11 +216,13 @@ export function SweepRuleEditor() {
         action: selectedAction,
         existingRuleNames: sweepRules.map(r => r.name).filter(Boolean),
       });
+      if (!isMountedRef.current) return;
       if (result?.name) {
         setName(result.name);
         if (markAsUserEdited) setNameUserEdited(true);
       }
     } catch (err) {
+      if (!isMountedRef.current) return;
       console.error('[Sweep] Name suggestion failed:', err);
       if (markAsUserEdited) setSuggestError('Could not generate a name. Try again.');
     }

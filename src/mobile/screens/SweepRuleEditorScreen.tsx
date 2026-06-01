@@ -102,6 +102,11 @@ export function SweepRuleEditorScreen() {
   }, [criteria, criteriaLogic, columns]);
 
   const lastAutoCriteriaKey = useRef<string>('');
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => { isMountedRef.current = false; };
+  }, []);
   useEffect(() => {
     if (!sweepRuleEditor) return;
     if (isEditMode) return;
@@ -112,6 +117,7 @@ export function SweepRuleEditorScreen() {
     if (key === lastAutoCriteriaKey.current) return;
 
     const handle = setTimeout(() => {
+      if (!isMountedRef.current) return;
       lastAutoCriteriaKey.current = key;
       runSuggestNameRef.current?.(false);
     }, 800);
@@ -196,11 +202,13 @@ export function SweepRuleEditorScreen() {
         action: selectedAction,
         existingRuleNames: sweepRules.map(r => r.name).filter(Boolean),
       });
+      if (!isMountedRef.current) return;
       if (result?.name) {
         setName(result.name);
         if (markAsUserEdited) setNameUserEdited(true);
       }
     } catch (err) {
+      if (!isMountedRef.current) return;
       console.error('[Sweep] Name suggestion failed:', err);
       if (markAsUserEdited) setSuggestError('Could not generate a name.');
     }
