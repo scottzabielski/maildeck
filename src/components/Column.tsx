@@ -15,7 +15,7 @@ interface ColumnProps {
 }
 
 export function Column({ column, dragControls, columnOrder = 0 }: ColumnProps) {
-  const { emails, accounts, disabledAccountIds, openColumnContextMenu, selectedEmail, highlightedEmail, multiSelectedIds, sweepEmails, sweepRules, searchQuery, globalFilters, _fetchNextPage, _hasNextPage, _isFetchingNextPage, _viewSwitchKey } = useStore();
+  const { emails, accounts, disabledAccountIds, openColumnContextMenu, selectedEmail, highlightedEmail, multiSelectedIds, sweepEmails, sweepRules, exemptedEmailIds, searchQuery, globalFilters, _fetchNextPage, _hasNextPage, _isFetchingNextPage, _viewSwitchKey } = useStore();
   const selectedEmailId = selectedEmail ? selectedEmail.emailId : null;
   const highlightedEmailId = highlightedEmail ? highlightedEmail.emailId : null;
 
@@ -44,9 +44,10 @@ export function Column({ column, dragControls, columnOrder = 0 }: ColumnProps) {
     return map;
   }, [emails, enabledSweepRules]);
 
-  // sweepEmails is in the dep list because a stream column may use the
-  // "sweep" criterion field, which reads from the sweep queue. Without it,
-  // newly-queued (or de-queued) emails wouldn't move in/out of the column.
+  // sweepEmails, enabledSweepRules and exemptedEmailIds are in the dep list
+  // because a stream column may use the "sweep" criterion field, which reads
+  // from the sweep queue, the active rules and the exemption set. Without
+  // them, the column wouldn't re-filter when any of those change.
   const columnEmails = useMemo(() => {
     beginCriteriaMatch();
     const result = emails.filter(e => {
@@ -57,7 +58,7 @@ export function Column({ column, dragControls, columnOrder = 0 }: ColumnProps) {
     });
     endCriteriaMatch();
     return result;
-  }, [emails, column.id, column.criteria, column.criteriaLogic, disabledAccountIds, sweepEmails]);
+  }, [emails, column.id, column.criteria, column.criteriaLogic, disabledAccountIds, sweepEmails, enabledSweepRules, exemptedEmailIds]);
 
   const displayEmails = useMemo(() => {
     let filtered = columnEmails;

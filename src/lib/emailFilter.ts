@@ -22,6 +22,8 @@ import { useStore } from '../store/index.ts';
 // Cached references to avoid repeated useStore.getState() in hot loops
 let _cachedColumns: Column[] | null = null;
 let _cachedSweepIds: Set<string> | null = null;
+let _cachedEnabledSweepRules: Array<{ criteria: Criterion[]; criteriaLogic: 'and' | 'or' }> | null = null;
+let _cachedExemptedIds: Set<string> | null = null;
 
 function getColumns(): Column[] {
   if (!_cachedColumns) _cachedColumns = useStore.getState().columns;
@@ -35,17 +37,38 @@ function getSweepIds(): Set<string> {
   return _cachedSweepIds;
 }
 
+function getEnabledSweepRules(): Array<{ criteria: Criterion[]; criteriaLogic: 'and' | 'or' }> {
+  if (!_cachedEnabledSweepRules) {
+    _cachedEnabledSweepRules = useStore.getState().sweepRules
+      .filter(r => r.enabled)
+      .map(r => ({ criteria: r.criteria, criteriaLogic: r.criteriaLogic }));
+  }
+  return _cachedEnabledSweepRules;
+}
+
+function getExemptedIds(): Set<string> {
+  if (!_cachedExemptedIds) _cachedExemptedIds = useStore.getState().exemptedEmailIds;
+  return _cachedExemptedIds;
+}
+
 /**
- * Call before a batch of emailMatchesCriteria calls to snapshot columns once,
- * and after to release the reference.
+ * Call before a batch of emailMatchesCriteria calls to snapshot store state
+ * once, and after to release references.
  */
 export function beginCriteriaMatch() {
-  _cachedColumns = useStore.getState().columns;
-  _cachedSweepIds = new Set(useStore.getState().sweepEmails.map(e => e.id));
+  const s = useStore.getState();
+  _cachedColumns = s.columns;
+  _cachedSweepIds = new Set(s.sweepEmails.map(e => e.id));
+  _cachedEnabledSweepRules = s.sweepRules
+    .filter(r => r.enabled)
+    .map(r => ({ criteria: r.criteria, criteriaLogic: r.criteriaLogic }));
+  _cachedExemptedIds = s.exemptedEmailIds;
 }
 export function endCriteriaMatch() {
   _cachedColumns = null;
   _cachedSweepIds = null;
+  _cachedEnabledSweepRules = null;
+  _cachedExemptedIds = null;
 }
 
 export function emailMatchesCriteria(
@@ -118,12 +141,27 @@ function matchSingleCriterion(
     }
     case 'sweep': {
       // value is 'no rule' | 'has rule' (case-insensitive).
-      // "has rule" matches when the email is currently in sweep_queue
-      // (mirrored as sweepEmails in the store).
-      const inQueue = getSweepIds().has(email.id);
+      // "has rule" = the email would be (or is) acted on by an enabled sweep
+      // rule. Specifically: it's currently in sweep_queue OR it matches an
+      // enabled rule's criteria. Exempted emails are treated as "no rule"
+      // since the user has explicitly opted them out.
+      const exempt = getExemptedIds().has(email.id);
+      let hasRule = false;
+      if (!exempt) {
+        if (getSweepIds().has(email.id)) {
+          hasRule = true;
+        } else {
+          for (const r of getEnabledSweepRules()) {
+            if (emailMatchesCriteriaInternal(email, r.criteria, r.criteriaLogic, visitedStreams)) {
+              hasRule = true;
+              break;
+            }
+          }
+        }
+      }
       const want = v.includes('has') ? true : v.includes('no') ? false : null;
       if (want === null) return false;
-      return inQueue === want;
+      return hasRule === want;
     }
     default:
       return false;

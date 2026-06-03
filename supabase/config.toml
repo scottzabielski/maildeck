@@ -421,6 +421,9 @@ verify_jwt = false
 [functions.suggest-sweep-consolidations]
 verify_jwt = false
 
+[functions.sweep-backfill]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

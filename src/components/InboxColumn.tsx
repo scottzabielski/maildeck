@@ -14,7 +14,7 @@ interface InboxColumnProps {
 }
 
 export function InboxColumn({ accountId, columnOrder = 0 }: InboxColumnProps) {
-  const { emails, accounts, disabledAccountIds, selectedEmail, highlightedEmail, multiSelectedIds, sweepEmails, columns, sweepRules, searchQuery, globalFilters, _fetchNextPage, _hasNextPage, _isFetchingNextPage, _viewSwitchKey } = useStore();
+  const { emails, accounts, disabledAccountIds, selectedEmail, highlightedEmail, multiSelectedIds, sweepEmails, columns, sweepRules, exemptedEmailIds, searchQuery, globalFilters, _fetchNextPage, _hasNextPage, _isFetchingNextPage, _viewSwitchKey } = useStore();
   const syncMutation = useSyncAccount();
   const [syncing, setSyncing] = useState(false);
   const selectedEmailId = selectedEmail ? selectedEmail.emailId : null;
@@ -95,7 +95,7 @@ export function InboxColumn({ accountId, columnOrder = 0 }: InboxColumnProps) {
     }
     endCriteriaMatch();
     return map;
-  }, [columnEmails, enabledStreams, sweepEmails]);
+  }, [columnEmails, enabledStreams, sweepEmails, enabledSweepRules, exemptedEmailIds]);
 
   const displayEmails = useMemo(() => {
     if (globalFilters.size === 0) return columnEmails;
