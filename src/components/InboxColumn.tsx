@@ -77,6 +77,8 @@ export function InboxColumn({ accountId, columnOrder = 0 }: InboxColumnProps) {
     return map;
   }, [columnEmails, enabledSweepRules]);
 
+  // sweepEmails is in the dep list further down because stream columns can
+  // use the "sweep" criterion field, which reads from the sweep queue.
   const matchedStreamsMap = useMemo(() => {
     const map = new Map<string, Array<{ id: string; accent: string }>>();
     beginCriteriaMatch();
@@ -93,7 +95,7 @@ export function InboxColumn({ accountId, columnOrder = 0 }: InboxColumnProps) {
     }
     endCriteriaMatch();
     return map;
-  }, [columnEmails, enabledStreams]);
+  }, [columnEmails, enabledStreams, sweepEmails]);
 
   const displayEmails = useMemo(() => {
     if (globalFilters.size === 0) return columnEmails;

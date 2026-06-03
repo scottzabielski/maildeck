@@ -19,12 +19,20 @@ import { useStore } from '../store/index.ts';
  *   - "endsWith" → case-insensitive suffix match
  */
 
-// Cached columns reference to avoid repeated useStore.getState() in hot loops
+// Cached references to avoid repeated useStore.getState() in hot loops
 let _cachedColumns: Column[] | null = null;
+let _cachedSweepIds: Set<string> | null = null;
 
 function getColumns(): Column[] {
   if (!_cachedColumns) _cachedColumns = useStore.getState().columns;
   return _cachedColumns;
+}
+
+function getSweepIds(): Set<string> {
+  if (!_cachedSweepIds) {
+    _cachedSweepIds = new Set(useStore.getState().sweepEmails.map(e => e.id));
+  }
+  return _cachedSweepIds;
 }
 
 /**
@@ -33,9 +41,11 @@ function getColumns(): Column[] {
  */
 export function beginCriteriaMatch() {
   _cachedColumns = useStore.getState().columns;
+  _cachedSweepIds = new Set(useStore.getState().sweepEmails.map(e => e.id));
 }
 export function endCriteriaMatch() {
   _cachedColumns = null;
+  _cachedSweepIds = null;
 }
 
 export function emailMatchesCriteria(
@@ -105,6 +115,15 @@ function matchSingleCriterion(
       const visited = new Set(visitedStreams);
       visited.add(target.id);
       return emailMatchesCriteriaInternal(email, target.criteria, target.criteriaLogic, visited);
+    }
+    case 'sweep': {
+      // value is 'no rule' | 'has rule' (case-insensitive).
+      // "has rule" matches when the email is currently in sweep_queue
+      // (mirrored as sweepEmails in the store).
+      const inQueue = getSweepIds().has(email.id);
+      const want = v.includes('has') ? true : v.includes('no') ? false : null;
+      if (want === null) return false;
+      return inQueue === want;
     }
     default:
       return false;

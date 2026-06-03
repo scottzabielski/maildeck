@@ -59,6 +59,7 @@ export function ColumnEditorScreen() {
     setCriteria(prev => prev.map((r, idx) => {
       if (idx !== i) return r;
       if (key === 'field' && val === 'stream') return { ...r, field: val, op: 'equals', value: '' };
+      if (key === 'field' && val === 'sweep') return { ...r, field: val, op: 'equals', value: 'no rule' };
       return { ...r, [key]: val };
     }));
   };
@@ -150,10 +151,15 @@ export function ColumnEditorScreen() {
                   <option value="label">Label</option>
                   <option value="body">Body</option>
                   <option value="stream">Stream</option>
+                  <option value="sweep">Sweep</option>
                 </select>
                 {row.field === 'stream' ? (
                   <span className="mobile-editor-select" style={{ fontStyle: 'italic', color: 'var(--text-tertiary)' }}>
                     is part of
+                  </span>
+                ) : row.field === 'sweep' ? (
+                  <span className="mobile-editor-select" style={{ fontStyle: 'italic', color: 'var(--text-tertiary)' }}>
+                    has
                   </span>
                 ) : (
                   <select
@@ -178,6 +184,15 @@ export function ColumnEditorScreen() {
                     {columns.filter(c => c.id !== editingColumnId).map(c => (
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
+                  </select>
+                ) : row.field === 'sweep' ? (
+                  <select
+                    className="mobile-editor-input"
+                    value={row.value}
+                    onChange={(e) => updateRow(i, 'value', e.target.value)}
+                  >
+                    <option value="no rule">no rule</option>
+                    <option value="has rule">has rule</option>
                   </select>
                 ) : (
                   <input

@@ -44,6 +44,9 @@ export function Column({ column, dragControls, columnOrder = 0 }: ColumnProps) {
     return map;
   }, [emails, enabledSweepRules]);
 
+  // sweepEmails is in the dep list because a stream column may use the
+  // "sweep" criterion field, which reads from the sweep queue. Without it,
+  // newly-queued (or de-queued) emails wouldn't move in/out of the column.
   const columnEmails = useMemo(() => {
     beginCriteriaMatch();
     const result = emails.filter(e => {
@@ -54,7 +57,7 @@ export function Column({ column, dragControls, columnOrder = 0 }: ColumnProps) {
     });
     endCriteriaMatch();
     return result;
-  }, [emails, column.id, column.criteria, column.criteriaLogic, disabledAccountIds]);
+  }, [emails, column.id, column.criteria, column.criteriaLogic, disabledAccountIds, sweepEmails]);
 
   const displayEmails = useMemo(() => {
     let filtered = columnEmails;

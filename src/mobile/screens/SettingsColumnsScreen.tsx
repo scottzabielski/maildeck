@@ -14,6 +14,9 @@ function formatCriteriaSummary(criteria: Criterion[], logic: 'and' | 'or'): stri
       const col = columns.find(col => col.id === c.value);
       return `Stream: "${col?.name || c.value}"`;
     }
+    if (c.field === 'sweep') {
+      return `Sweep: ${c.value}`;
+    }
     const fieldLabel = { from: 'From', to: 'To', subject: 'Subject', body: 'Body', label: 'Label' }[c.field] || c.field;
     return `${fieldLabel} ${c.op.replace('_', ' ')} "${c.value}"`;
   }).join(joiner);

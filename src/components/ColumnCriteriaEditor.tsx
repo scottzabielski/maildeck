@@ -65,6 +65,9 @@ export function ColumnCriteriaEditor() {
       if (key === 'field' && val === 'stream') {
         return { ...r, field: val, op: 'equals', value: '' };
       }
+      if (key === 'field' && val === 'sweep') {
+        return { ...r, field: val, op: 'equals', value: 'no rule' };
+      }
       if (key === 'field') {
         const prefillValue = getPrefillValueForField(val);
         if (prefillValue) {
@@ -162,10 +165,15 @@ export function ColumnCriteriaEditor() {
                   <option value="label">Label</option>
                   <option value="body">Body</option>
                   <option value="stream">Stream</option>
+                  <option value="sweep">Sweep</option>
                 </select>
                 {row.field === 'stream' ? (
                   <span className="filter-select" style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--text-tertiary)', fontStyle: 'italic', cursor: 'default' }}>
                     is part of
+                  </span>
+                ) : row.field === 'sweep' ? (
+                  <span className="filter-select" style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--text-tertiary)', fontStyle: 'italic', cursor: 'default' }}>
+                    has
                   </span>
                 ) : (
                   <select
@@ -191,6 +199,16 @@ export function ColumnCriteriaEditor() {
                     {otherColumns.map(col => (
                       <option key={col.id} value={col.id}>{col.name}</option>
                     ))}
+                  </select>
+                ) : row.field === 'sweep' ? (
+                  <select
+                    className="filter-select"
+                    style={{ flex: 1 }}
+                    value={row.value}
+                    onChange={(e) => updateRow(i, 'value', e.target.value)}
+                  >
+                    <option value="no rule">no rule</option>
+                    <option value="has rule">has rule</option>
                   </select>
                 ) : (
                   <input

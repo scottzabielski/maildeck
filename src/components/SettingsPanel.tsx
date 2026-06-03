@@ -207,6 +207,9 @@ function formatColumnCriteriaSummary(criteria: Criterion[], logic: 'and' | 'or')
       const col = columns.find(col => col.id === c.value);
       return `Stream: "${col?.name || c.value}"`;
     }
+    if (c.field === 'sweep') {
+      return `Sweep: ${c.value}`;
+    }
     const fieldLabel = { from: 'From', to: 'To', subject: 'Subject', body: 'Body', label: 'Label' }[c.field] || c.field;
     const opLabel = c.op.replace('_', ' ');
     return `${fieldLabel} ${opLabel} "${c.value}"`;
