@@ -8,6 +8,9 @@ import { corsHeaders } from '../_shared/cors.ts';
  * - full: Initial sync — fetch all inbox emails
  * - incremental: Fetch only new/changed emails since last sync
  *
+ * Outlook inboxes are also reconciled against the real inbox (see
+ * outlookReconcile) after every complete full sync and once an hour.
+ *
  * Called by:
  * - Frontend (after connecting a new account)
  * - pg_cron polling (every 5 minutes)
@@ -59,9 +62,10 @@ Deno.serve(async (req) => {
     const results = [];
     for (const acct of accounts || []) {
       try {
-        // Use full mode for accounts that haven't completed initial sync
-        const acctMode = (acct.sync_status === 'never_synced' || acct.sync_status === 'syncing' || acct.sync_status === 'error')
-          ? 'full' : 'incremental';
+        // Full mode only for accounts that never synced: syncAccount falls back to
+        // a full sync by itself when there's no history id / delta link, and
+        // forcing one after an error (often a 429) only made the next run heavier.
+        const acctMode = acct.sync_status === 'never_synced' ? 'full' : 'incremental';
         const result = await syncAccount(supabase, acct.id, acctMode);
         results.push(result);
       } catch (err) {
@@ -102,11 +106,22 @@ async function syncAccount(
     throw new Error(`Account ${accountId} not found`);
   }
 
-  // Mark as syncing
-  await supabase
+  // Claim the account: one sync per mailbox at a time. Push notifications
+  // arrive in bursts (a bulk sweep produces hundreds), and overlapping syncs
+  // of one mailbox trip Gmail's per-user concurrency limit (429) and fail each
+  // other. Gmail history and Outlook deltas are cumulative, so a skipped sync
+  // loses nothing. A claim older than 2 minutes is from a run that died.
+  const staleBefore = new Date(Date.now() - 2 * 60_000).toISOString();
+  const { data: claimed, error: claimErr } = await supabase
     .from('email_accounts')
     .update({ sync_status: 'syncing' })
-    .eq('id', accountId);
+    .eq('id', accountId)
+    .or(`sync_status.neq.syncing,updated_at.lt."${staleBefore}"`)
+    .select('id');
+  if (claimErr) throw claimErr;
+  if (!claimed?.length) {
+    return { account_id: accountId, status: 'busy' };
+  }
 
   try {
     // Decrypt access token
@@ -141,6 +156,12 @@ async function syncAccount(
       } else {
         try {
           messageCount = await outlookIncrementalSync(supabase, account, accessToken);
+          // Once an hour (the polling run at the top of the hour) as a safety
+          // net. A failed reconcile shouldn't fail the sync itself.
+          if (new Date().getUTCMinutes() < 5) {
+            await outlookReconcile(supabase, account, accessToken)
+              .catch((err) => console.error(`Outlook reconcile failed for ${accountId}:`, (err as Error).message));
+          }
         } catch (err) {
           // Delta link expired or invalid — fall back to full sync
           if ((err as Error).message?.includes('410') || (err as Error).message?.includes('404')) {
@@ -257,9 +278,10 @@ async function gmailFullSync(
     return 0;
   }
 
-  // Fetch message metadata in parallel batches with time budget
+  // Fetch message metadata in parallel batches with time budget. Gmail allows
+  // only a few concurrent requests per mailbox, so keep batches small.
   let synced = 0;
-  const batchSize = 20;
+  const batchSize = GMAIL_CONCURRENCY;
 
   for (let i = 0; i < remainingIds.length; i += batchSize) {
     if (Date.now() - startTime > TIME_BUDGET_MS) {
@@ -341,8 +363,8 @@ async function gmailIncrementalSync(
   const deletedSet = new Set(deletedIds);
   const uniqueAdded = [...new Set([...addedIds, ...changedIds])].filter(id => !deletedSet.has(id));
 
-  for (let i = 0; i < uniqueAdded.length; i += 20) {
-    const batch = uniqueAdded.slice(i, i + 20);
+  for (let i = 0; i < uniqueAdded.length; i += GMAIL_CONCURRENCY) {
+    const batch = uniqueAdded.slice(i, i + GMAIL_CONCURRENCY);
     const messages = await Promise.all(
       batch.map(async (id) => {
         const res = await gmailFetch(accessToken, `/messages/${id}?format=METADATA&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject`);
@@ -363,13 +385,7 @@ async function gmailIncrementalSync(
   }
 
   // Mark deleted messages
-  if (deletedIds.length > 0) {
-    await supabase
-      .from('emails')
-      .update({ is_deleted: true })
-      .eq('account_id', accountId)
-      .in('provider_message_id', deletedIds);
-  }
+  await updateByProviderIds(supabase, accountId, deletedIds, { is_deleted: true });
 
   // Update historyId
   await supabase
@@ -414,15 +430,23 @@ function gmailMessageToRow(
   };
 }
 
+const GMAIL_CONCURRENCY = 5;
+
 async function gmailFetch(accessToken: string, path: string): Promise<Response> {
-  const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me${path}`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (!res.ok) {
+  // Gmail rate-limits per mailbox; back off briefly (1s, then 3s) on 429/5xx.
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me${path}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (res.ok) return res;
+    if ((res.status === 429 || res.status >= 500) && attempt < 2) {
+      await res.body?.cancel();
+      await new Promise((resolve) => setTimeout(resolve, 1000 * 3 ** attempt));
+      continue;
+    }
     const err = await res.text();
     throw new Error(`Gmail API error (${res.status}): ${err}`);
   }
-  return res;
 }
 
 // ============================================================
@@ -449,6 +473,7 @@ async function outlookFullSync(
   let synced = 0;
   let url: string | null = `https://graph.microsoft.com/v1.0/me/mailFolders/Inbox/messages?$top=100&$orderby=receivedDateTime desc&$select=id,conversationId,from,toRecipients,subject,bodyPreview,receivedDateTime,isRead,flag,categories,parentFolderId`;
   let timedOut = false;
+  const inboxIds = new Set<string>();
 
   while (url) {
     if (Date.now() - startTime > TIME_BUDGET_MS) {
@@ -461,6 +486,7 @@ async function outlookFullSync(
     const data = await res.json();
 
     if (data.value) {
+      for (const msg of data.value) inboxIds.add(msg.id as string);
       const rows = data.value.map((msg: Record<string, unknown>) =>
         outlookMessageToRow(msg, userId, accountId, inboxFolderId),
       );
@@ -500,6 +526,11 @@ async function outlookFullSync(
         .update({ sync_delta_link: deltaLink })
         .eq('id', accountId);
     }
+
+    // The listing above covered the whole inbox, so anything still marked as
+    // in the inbox here but not in that listing has left it.
+    await outlookReconcile(supabase, account, accessToken, inboxIds)
+      .catch((err) => console.error(`Outlook reconcile failed for ${accountId}:`, (err as Error).message));
   }
 
   return synced;
@@ -540,12 +571,9 @@ async function outlookIncrementalSync(
       if (removed.length > 0) {
         const ids = removed.map((msg: Record<string, unknown>) => msg.id as string);
         // Inbox-scoped delta: @removed means "no longer in Inbox" (moved, deleted, etc.)
-        // Mark as archived so the client-side query (is_archived=false) filters them out
-        await supabase
-          .from('emails')
-          .update({ is_archived: true })
-          .eq('account_id', accountId)
-          .in('provider_message_id', ids);
+        // Mark as archived so the client-side query (is_archived=false) filters them out.
+        // A failure here throws: the delta link isn't advanced, so the next sync retries.
+        await updateByProviderIds(supabase, accountId, ids, { is_archived: true });
       }
     }
 
@@ -601,6 +629,136 @@ function outlookMessageToRow(
       })),
     ),
   };
+}
+
+// Outlook ids are ~152 characters, so 50 per `in.(...)` filter keeps the URL
+// near 8 KB, well under the edge's ~16 KB limit (past it, the request fails).
+const OUTLOOK_ID_CHUNK = 50;
+const ROW_ID_CHUNK = 200;
+
+async function updateByProviderIds(
+  supabase: ReturnType<typeof createAdminClient>,
+  accountId: string,
+  providerIds: string[],
+  updates: Record<string, unknown>,
+): Promise<void> {
+  for (let i = 0; i < providerIds.length; i += OUTLOOK_ID_CHUNK) {
+    const { error } = await supabase
+      .from('emails')
+      .update(updates)
+      .eq('account_id', accountId)
+      .in('provider_message_id', providerIds.slice(i, i + OUTLOOK_ID_CHUNK));
+    if (error) throw error;
+  }
+}
+
+async function updateByRowIds(
+  supabase: ReturnType<typeof createAdminClient>,
+  rowIds: string[],
+  updates: Record<string, unknown>,
+): Promise<void> {
+  for (let i = 0; i < rowIds.length; i += ROW_ID_CHUNK) {
+    const { error } = await supabase
+      .from('emails')
+      .update(updates)
+      .in('id', rowIds.slice(i, i + ROW_ID_CHUNK));
+    if (error) throw error;
+  }
+}
+
+/**
+ * Makes MailDeck's copy of an Outlook inbox match the real one.
+ *
+ * The inbox-scoped delta only reports changes while a delta link is held, so
+ * mail that left the inbox during a gap (a full resync after the link
+ * expired, an update that failed) stayed "in the inbox" here, and sweeps then
+ * moved or deleted messages the user had already filed or deleted. This
+ * archives local copies that aren't in the real inbox, un-archives ones that
+ * are, and fetches up to 100 inbox messages that never synced.
+ *
+ * `inboxIds` comes from a full sync's own listing; otherwise the inbox is
+ * listed here (ids only) and nothing changes unless the listing is complete.
+ */
+async function outlookReconcile(
+  supabase: ReturnType<typeof createAdminClient>,
+  account: Record<string, unknown>,
+  accessToken: string,
+  inboxIds?: Set<string>,
+): Promise<{ archived: number; restored: number; added: number; missing: number } | null> {
+  const accountId = account.id as string;
+  let ids = inboxIds;
+  if (!ids) {
+    const folder = await (await outlookFetch(accessToken,
+      'https://graph.microsoft.com/v1.0/me/mailFolders/Inbox?$select=totalItemCount')).json();
+    const total = Number(folder.totalItemCount);
+    const listed = new Set<string>();
+    let url: string | null = 'https://graph.microsoft.com/v1.0/me/mailFolders/Inbox/messages?$select=id&$top=1000';
+    while (url) {
+      const data = await (await outlookFetch(accessToken, url)).json();
+      for (const msg of data.value ?? []) listed.add(msg.id as string);
+      url = data['@odata.nextLink'] || null;
+    }
+    // Mail arriving or leaving mid-listing shifts the count slightly; a big
+    // shortfall means the listing is incomplete, so change nothing.
+    if (!Number.isFinite(total) || listed.size < total - 25) {
+      console.warn(`Outlook reconcile skipped for ${accountId}: listed ${listed.size} of ${total} inbox items`);
+      return null;
+    }
+    ids = listed;
+  }
+
+  // Every local copy of this account's mail, live or not.
+  const local = new Map<string, { id: string; live: boolean }>();
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await supabase
+      .from('emails')
+      .select('id, provider_message_id, is_archived, is_deleted')
+      .eq('account_id', accountId)
+      .order('id')
+      .range(offset, offset + 999);
+    if (error) throw error;
+    for (const r of data ?? []) {
+      local.set(r.provider_message_id as string, { id: r.id as string, live: !r.is_archived && !r.is_deleted });
+    }
+    if (!data || data.length < 1000) break;
+  }
+
+  const stale: string[] = [];
+  for (const [providerId, row] of local) {
+    if (row.live && !ids.has(providerId)) stale.push(row.id);
+  }
+  const restored: string[] = [];
+  const missing: string[] = [];
+  for (const providerId of ids) {
+    const row = local.get(providerId);
+    if (!row) missing.push(providerId);
+    else if (!row.live) restored.push(row.id);
+  }
+
+  await updateByRowIds(supabase, stale, { is_archived: true });
+  await updateByRowIds(supabase, restored, { is_archived: false, is_deleted: false });
+
+  let added = 0;
+  if (missing.length > 0) {
+    const inboxFolderId = await resolveOutlookInboxFolderId(accessToken);
+    const fetchNow = missing.slice(0, 100);
+    for (let i = 0; i < fetchNow.length; i += 5) {
+      const msgs = await Promise.all(fetchNow.slice(i, i + 5).map(async (id) => {
+        const res = await outlookFetch(accessToken,
+          `https://graph.microsoft.com/v1.0/me/messages/${encodeURIComponent(id)}?$select=id,conversationId,from,toRecipients,subject,bodyPreview,receivedDateTime,isRead,flag,categories,parentFolderId`);
+        return res.json();
+      }));
+      const rows = msgs.map((msg) => outlookMessageToRow(msg, account.user_id as string, accountId, inboxFolderId));
+      const { error } = await supabase.from('emails').upsert(rows, { onConflict: 'account_id,provider_message_id' });
+      if (error) throw error;
+      added += rows.length;
+    }
+  }
+
+  if (stale.length || restored.length || missing.length) {
+    console.log(`Outlook reconcile ${accountId}: archived ${stale.length}, restored ${restored.length}, added ${added} of ${missing.length} unsynced`);
+  }
+  return { archived: stale.length, restored: restored.length, added, missing: missing.length };
 }
 
 async function outlookFetch(accessToken: string, url: string): Promise<Response> {
