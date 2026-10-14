@@ -4,10 +4,28 @@ import { corsHeaders } from '../_shared/cors.ts';
 /**
  * Sweep execute Edge Function.
  *
- * Called by pg_cron every minute. Processes all pending sweep queue items
+ * Called by pg_cron every minute. Processes pending sweep queue items
  * whose scheduled_at has passed, performing the configured action
- * (archive or delete) both locally and on the email provider.
+ * (archive or delete) on the email provider and then locally.
+ *
+ * A sweep only counts as done once the provider confirms it. A rate limit,
+ * an expired token or a provider outage pushes the item back 10 minutes
+ * instead of marking an email archived that is still in the real inbox.
+ * Outlook messages are checked first and left alone unless they are still
+ * in the inbox, so a sweep never pulls a message out of a folder it was
+ * filed in (or out of Deleted Items).
  */
+
+const RETRY_DELAY_MS = 10 * 60_000;
+
+type Outcome = 'done' | 'retry' | 'gone' | 'not_in_inbox' | 'failed';
+
+interface AccountContext {
+  provider: string;
+  accessToken: string;
+  inboxId?: string;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -16,7 +34,7 @@ Deno.serve(async (req) => {
   const supabase = createAdminClient();
 
   try {
-    // Fetch pending sweep items that are due
+    // Fetch pending sweep items that are due, oldest first
     const { data: pendingItems, error } = await supabase
       .from('sweep_queue')
       .select(`
@@ -34,6 +52,7 @@ Deno.serve(async (req) => {
       `)
       .eq('executed', false)
       .lte('scheduled_at', new Date().toISOString())
+      .order('scheduled_at', { ascending: true })
       .limit(100);
 
     if (error) throw error;
@@ -42,6 +61,9 @@ Deno.serve(async (req) => {
     }
 
     const results: { id: string; status: string }[] = [];
+    const accounts = new Map<string, AccountContext | null>();
+    const markExecuted = (id: string) =>
+      supabase.from('sweep_queue').update({ executed: true }).eq('id', id);
 
     for (const item of pendingItems) {
       try {
@@ -58,57 +80,41 @@ Deno.serve(async (req) => {
           (item.action === 'archive' && email.is_archived) ||
           (item.action === 'delete' && email.is_deleted)
         ) {
-          await supabase
-            .from('sweep_queue')
-            .update({ executed: true })
-            .eq('id', item.id);
+          await markExecuted(item.id);
           results.push({ id: item.id, status: 'skipped' });
           continue;
         }
 
-        // Get account for provider sync
-        const { data: account } = await supabase
-          .from('email_accounts')
-          .select('id, provider, access_token_encrypted')
-          .eq('id', email.account_id)
-          .single();
+        const account = await accountContext(supabase, accounts, email.account_id);
+        const outcome: Outcome = !account
+          ? 'done' // No provider access: local-only, as before
+          : account.provider === 'gmail'
+            ? await sweepGmail(account, email.provider_message_id, item.action)
+            : await sweepOutlook(account, email.provider_message_id, item.action);
 
-        // Update local DB
-        const dbUpdates = item.action === 'delete'
-          ? { is_deleted: true }
-          : { is_archived: true };
-
-        await supabase
-          .from('emails')
-          .update(dbUpdates)
-          .eq('id', email.id);
-
-        // Sync to provider if we have account access
-        if (account?.access_token_encrypted) {
-          try {
-            const { data: accessToken } = await supabase.rpc('decrypt_token', {
-              encrypted_text: account.access_token_encrypted,
-            });
-
-            if (accessToken) {
-              if (account.provider === 'gmail') {
-                await syncGmail(accessToken, email.provider_message_id, item.action);
-              } else {
-                await syncOutlook(accessToken, email.provider_message_id, item.action);
-              }
-            }
-          } catch (providerErr) {
-            console.error(`Provider sync failed for sweep item ${item.id}:`, providerErr);
-          }
+        if (outcome === 'retry') {
+          await supabase
+            .from('sweep_queue')
+            .update({ scheduled_at: new Date(Date.now() + RETRY_DELAY_MS).toISOString() })
+            .eq('id', item.id);
+          results.push({ id: item.id, status: 'retry' });
+          continue;
         }
 
-        // Mark as executed
-        await supabase
-          .from('sweep_queue')
-          .update({ executed: true })
-          .eq('id', item.id);
+        if (outcome === 'done') {
+          await supabase
+            .from('emails')
+            .update(item.action === 'delete' ? { is_deleted: true } : { is_archived: true })
+            .eq('id', email.id);
+        } else if (outcome === 'gone' || outcome === 'not_in_inbox') {
+          // Already out of the inbox: record that, change nothing on the provider.
+          await supabase.from('emails').update({ is_archived: true }).eq('id', email.id);
+        }
+        // 'failed' (a permanent provider error): the email is still where it was,
+        // so leave its local state alone and stop retrying.
 
-        results.push({ id: item.id, status: 'executed' });
+        await markExecuted(item.id);
+        results.push({ id: item.id, status: outcome === 'done' ? 'executed' : outcome });
       } catch (itemErr) {
         console.error(`Failed to execute sweep item ${item.id}:`, itemErr);
         results.push({ id: item.id, status: 'error' });
@@ -122,11 +128,38 @@ Deno.serve(async (req) => {
   }
 });
 
-async function syncGmail(
-  accessToken: string,
-  messageId: string,
-  action: string,
-): Promise<void> {
+/** Provider access for an account, cached for this run. null = no token, act locally only. */
+async function accountContext(
+  supabase: ReturnType<typeof createAdminClient>,
+  cache: Map<string, AccountContext | null>,
+  accountId: string,
+): Promise<AccountContext | null> {
+  if (cache.has(accountId)) return cache.get(accountId)!;
+  const { data: account } = await supabase
+    .from('email_accounts')
+    .select('id, provider, access_token_encrypted')
+    .eq('id', accountId)
+    .single();
+
+  let ctx: AccountContext | null = null;
+  if (account?.access_token_encrypted) {
+    const { data: accessToken } = await supabase.rpc('decrypt_token', {
+      encrypted_text: account.access_token_encrypted,
+    });
+    if (accessToken) ctx = { provider: account.provider, accessToken };
+  }
+  cache.set(accountId, ctx);
+  return ctx;
+}
+
+/** How a provider response maps to an outcome. Not found means the message is already gone. */
+function classify(status: number): Outcome {
+  if (status === 404) return 'gone';
+  if (status === 401 || status === 408 || status === 429 || status >= 500) return 'retry';
+  return 'failed';
+}
+
+async function sweepGmail(account: AccountContext, messageId: string, action: string): Promise<Outcome> {
   const body = action === 'delete'
     ? { addLabelIds: ['TRASH'] }
     : { removeLabelIds: ['INBOX'] };
@@ -136,42 +169,51 @@ async function syncGmail(
     {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: `Bearer ${account.accessToken}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
     },
-  );
+  ).catch(() => null);
 
-  if (!res.ok) {
-    throw new Error(`Gmail sweep sync failed: ${await res.text()}`);
-  }
+  if (!res) return 'retry';
+  if (res.ok) return 'done';
+  const text = await res.text();
+  // Gmail reports some rate limits as 403 (userRateLimitExceeded, quota).
+  const outcome = res.status === 403 && /rateLimit|quota|dailyLimit/i.test(text) ? 'retry' : classify(res.status);
+  if (outcome !== 'gone') console.error(`Gmail sweep ${action} failed (${res.status}): ${text.slice(0, 300)}`);
+  return outcome;
 }
 
-async function syncOutlook(
-  accessToken: string,
-  messageId: string,
-  action: string,
-): Promise<void> {
-  const graphUrl = `https://graph.microsoft.com/v1.0/me/messages/${messageId}`;
+async function sweepOutlook(account: AccountContext, messageId: string, action: string): Promise<Outcome> {
+  const auth = { Authorization: `Bearer ${account.accessToken}` };
+  const graphUrl = `https://graph.microsoft.com/v1.0/me/messages/${encodeURIComponent(messageId)}`;
 
-  if (action === 'delete') {
-    const res = await fetch(graphUrl, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    if (!res.ok) throw new Error(`Outlook sweep delete failed: ${await res.text()}`);
-  } else {
-    const res = await fetch(`${graphUrl}/move`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ destinationId: 'archive' }),
-    });
-    if (!res.ok) throw new Error(`Outlook sweep archive failed: ${await res.text()}`);
+  // Act only on messages still in the inbox.
+  if (!account.inboxId) {
+    const res = await fetch('https://graph.microsoft.com/v1.0/me/mailFolders/Inbox?$select=id', { headers: auth })
+      .catch(() => null);
+    if (!res?.ok) return 'retry';
+    account.inboxId = (await res.json()).id as string;
   }
+  const lookup = await fetch(`${graphUrl}?$select=parentFolderId`, { headers: auth }).catch(() => null);
+  if (!lookup) return 'retry';
+  if (!lookup.ok) return classify(lookup.status);
+  if ((await lookup.json()).parentFolderId !== account.inboxId) return 'not_in_inbox';
+
+  const res = action === 'delete'
+    ? await fetch(graphUrl, { method: 'DELETE', headers: auth }).catch(() => null)
+    : await fetch(`${graphUrl}/move`, {
+      method: 'POST',
+      headers: { ...auth, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ destinationId: 'archive' }),
+    }).catch(() => null);
+
+  if (!res) return 'retry';
+  if (res.ok) return 'done';
+  const outcome = classify(res.status);
+  if (outcome !== 'gone') console.error(`Outlook sweep ${action} failed (${res.status}): ${(await res.text()).slice(0, 300)}`);
+  return outcome;
 }
 
 function jsonResponse(body: unknown, status = 200) {
