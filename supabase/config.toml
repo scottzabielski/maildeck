@@ -424,6 +424,11 @@ verify_jwt = false
 [functions.sweep-backfill]
 verify_jwt = false
 
+# Called by the mail MCP server with an API key (checked in code against
+# public.api_keys), not a Supabase JWT.
+[functions.mcp-api]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327
