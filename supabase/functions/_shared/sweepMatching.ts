@@ -173,6 +173,24 @@ export interface QueueRow {
   sweep_rule_id: string | null;
 }
 
+/**
+ * Existing sweep_queue rows for these emails. The ids travel in an RPC body
+ * (migration 018): as an `in.(...)` filter they'd overflow the URL once a
+ * rule matches more than a few hundred emails.
+ */
+export async function queueState(admin: AdminClient, userId: string, emailIds: string[]): Promise<QueueRow[]> {
+  const rows: QueueRow[] = [];
+  for (let i = 0; i < emailIds.length; i += 2000) {
+    const { data, error } = await admin.rpc('sweep_queue_state', {
+      p_user_id: userId,
+      p_email_ids: emailIds.slice(i, i + 2000),
+    });
+    if (error) throw error;
+    if (data) rows.push(...(data as QueueRow[]));
+  }
+  return rows;
+}
+
 export interface SweepPlan<T> {
   matches: T[];
   terminalAction: 'archive' | 'delete';
@@ -219,19 +237,7 @@ export async function planSweepRule<T extends { id: string; received_at: string 
     );
   }
 
-  // Existing queue rows for the matches, in chunks to stay under
-  // query-string limits on .in().
-  const ids = matches.map(e => e.id);
-  const existing: QueueRow[] = [];
-  for (let i = 0; i < ids.length; i += 500) {
-    const { data, error } = await admin
-      .from('sweep_queue')
-      .select('email_id, executed, scheduled_at, sweep_rule_id')
-      .eq('user_id', userId)
-      .in('email_id', ids.slice(i, i + 500));
-    if (error) throw error;
-    if (data) existing.push(...(data as QueueRow[]));
-  }
+  const existing = await queueState(admin, userId, matches.map(e => e.id));
 
   const done = new Set<string>();
   const keptPending = new Map<string, QueueRow>();
@@ -312,10 +318,13 @@ export async function applySweepRule(
  *
  * Field → DB column mapping:
  *   from    → sender_name, sender_email
- *   to      → recipients (JSONB text search)
+ *   to      → recipients_text (computed column: recipients::text)
  *   subject → subject
  *   body/snippet → snippet
- *   label   → labels (JSONB text search)
+ *   label   → labels_text (computed column: labels::text)
+ *
+ * PostgREST drops casts in filters, so `recipients::text` can't be used
+ * here; the computed columns (migration 018) give the same text.
  *
  * Op → Postgres:
  *   contains     → ILIKE '%value%'
@@ -370,14 +379,14 @@ function buildFilterExpression(c: Criterion): string[] {
         `sender_email.${filterOp}.${pattern}`,
       ];
     case 'to':
-      return [`recipients::text.${filterOp}.${pattern}`];
+      return [`recipients_text.${filterOp}.${pattern}`];
     case 'subject':
       return [`subject.${filterOp}.${pattern}`];
     case 'body':
     case 'snippet':
       return [`snippet.${filterOp}.${pattern}`];
     case 'label':
-      return [`labels::text.${filterOp}.${pattern}`];
+      return [`labels_text.${filterOp}.${pattern}`];
     default:
       return [];
   }
@@ -405,9 +414,9 @@ function applyAndFilter(query: any, c: Criterion) {
       );
     case 'to':
       if (isNot) {
-        return query.not('recipients::text', 'ilike', pattern);
+        return query.not('recipients_text', 'ilike', pattern);
       }
-      return query.ilike('recipients::text', pattern);
+      return query.ilike('recipients_text', pattern);
     case 'subject':
       if (isNot) {
         return query.not('subject', 'ilike', pattern);
@@ -421,9 +430,9 @@ function applyAndFilter(query: any, c: Criterion) {
       return query.ilike('snippet', pattern);
     case 'label':
       if (isNot) {
-        return query.not('labels::text', 'ilike', pattern);
+        return query.not('labels_text', 'ilike', pattern);
       }
-      return query.ilike('labels::text', pattern);
+      return query.ilike('labels_text', pattern);
     default:
       return query;
   }

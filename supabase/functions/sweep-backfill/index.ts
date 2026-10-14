@@ -4,6 +4,7 @@ import {
   type AdminClient,
   type SweepRuleRow,
   findLiveMatches,
+  queueState,
   resolveRuleCriteria,
   terminalActionFor,
 } from '../_shared/sweepMatching.ts';
@@ -93,20 +94,11 @@ async function processRule(
   if (matching.length === 0) return 0;
 
   // Exclude anything already in sweep_queue (don't disturb existing
-  // entries — this is a backfill, not a re-apply).
-  const ids = matching.map(e => e.id);
-  const existing = new Set<string>();
-  for (let i = 0; i < ids.length; i += 500) {
-    const chunk = ids.slice(i, i + 500);
-    const { data, error } = await admin
-      .from('sweep_queue')
-      .select('email_id')
-      .eq('user_id', rule.user_id)
-      .in('email_id', chunk);
-    // Without this lookup the upsert below would reset exempted rows to pending.
-    if (error) throw error;
-    for (const r of data ?? []) existing.add((r as { email_id: string }).email_id);
-  }
+  // entries — this is a backfill, not a re-apply). queueState throws if the
+  // lookup fails; without it the upsert below would reset exempted rows.
+  const existing = new Set(
+    (await queueState(admin, rule.user_id, matching.map(e => e.id))).map(r => r.email_id),
+  );
 
   let eligible = matching.filter(e => !existing.has(e.id));
 
