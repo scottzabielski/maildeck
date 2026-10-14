@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { Icons } from '../../components/ui/Icons.tsx';
 import { useStore } from '../../store/index.ts';
 import { useAuth } from '../../hooks/useAuth.ts';
-import { useDeleteSweepRule } from '../../hooks/useSweepRules.ts';
+import { useDeleteSweepRule, useToggleSweepRule } from '../../hooks/useSweepRules.ts';
 import { SweepSuggestionsScreen } from './SweepSuggestionsScreen.tsx';
 import type { SweepRule } from '../../types/index.ts';
+
+const useMockData = import.meta.env.VITE_USE_MOCK_DATA === 'true';
 
 function formatRuleSummary(rule: SweepRule): string {
   if (!rule.criteria || rule.criteria.length === 0) return rule.name;
@@ -29,7 +31,15 @@ export function SettingsSweepScreen() {
   const openNewSweepRuleEditor = useStore(s => s.openNewSweepRuleEditor);
   const { user } = useAuth();
   const deleteMutation = useDeleteSweepRule();
+  const toggleMutation = useToggleSweepRule();
   const [aiReviewOpen, setAiReviewOpen] = useState(false);
+
+  const handleToggle = (rule: SweepRule) => {
+    toggleSweepRule(rule.id);
+    if (!useMockData && user?.id) {
+      toggleMutation.mutate({ id: rule.id, is_enabled: !rule.enabled, userId: user.id });
+    }
+  };
 
   const handleDelete = (rule: SweepRule) => {
     if (!confirm(`Delete rule "${rule.name}"?`)) return;
@@ -101,7 +111,7 @@ export function SettingsSweepScreen() {
             <div className="mobile-settings-row-actions">
               <span
                 className={`mobile-toggle${rule.enabled ? ' on' : ''}`}
-                onClick={() => toggleSweepRule(rule.id)}
+                onClick={() => handleToggle(rule)}
                 role="switch"
                 aria-checked={rule.enabled}
               >

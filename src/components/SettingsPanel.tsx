@@ -3,13 +3,15 @@ import { Reorder } from 'framer-motion';
 import { Icons } from './ui/Icons.tsx';
 import { useStore } from '../store/index.ts';
 import { useAuth } from '../hooks/useAuth.ts';
-import { useDeleteSweepRule } from '../hooks/useSweepRules.ts';
+import { useDeleteSweepRule, useToggleSweepRule } from '../hooks/useSweepRules.ts';
 import { useDeleteColumn } from '../hooks/useColumns.ts';
 import { useDeleteEmailAccount } from '../hooks/useEmailAccounts.ts';
 import { ConnectAccountFlow } from './settings/ConnectAccountFlow.tsx';
 import { SweepSuggestionsModal } from './SweepSuggestionsModal.tsx';
 import { connectGmailAccount, connectOutlookAccount } from '../lib/oauth.ts';
 import type { Account, Column as ColumnType, Criterion, SweepRule } from '../types/index.ts';
+
+const useMockData = import.meta.env.VITE_USE_MOCK_DATA === 'true';
 
 function ruleMatchesSearch(name: string, criteria: Criterion[], query: string): boolean {
   if (!query) return true;
@@ -314,12 +316,20 @@ function SettingsSweepRules({ sweepRules, toggleSweepRule }: { sweepRules: Sweep
   const { sweepDelayHours, setSweepDelayHours, openSweepRuleEditorForRule, openNewSweepRuleEditor } = useStore();
   const { user } = useAuth();
   const deleteMutation = useDeleteSweepRule();
+  const toggleMutation = useToggleSweepRule();
   const [search, setSearch] = useState('');
   const [aiReviewOpen, setAiReviewOpen] = useState(false);
 
   const filteredRules = search
     ? sweepRules.filter(rule => ruleMatchesSearch(rule.name, rule.criteria, search))
     : sweepRules;
+
+  const handleToggle = (rule: SweepRule) => {
+    toggleSweepRule(rule.id);
+    if (!useMockData && user?.id) {
+      toggleMutation.mutate({ id: rule.id, is_enabled: !rule.enabled, userId: user.id });
+    }
+  };
 
   const handleDelete = (ruleId: string) => {
     if (!user?.id) return;
@@ -392,7 +402,7 @@ function SettingsSweepRules({ sweepRules, toggleSweepRule }: { sweepRules: Sweep
               </span>
               <button
                 className={`sweep-rule-toggle ${rule.enabled ? 'active' : ''}`}
-                onClick={() => toggleSweepRule(rule.id)}
+                onClick={() => handleToggle(rule)}
               />
               <button
                 className="sweep-rule-delete"

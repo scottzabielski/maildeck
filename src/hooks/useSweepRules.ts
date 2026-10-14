@@ -87,6 +87,11 @@ export function useUpdateSweepRule() {
   });
 }
 
+/**
+ * Pauses or resumes a rule. Pausing also cancels the rule's pending sweeps —
+ * otherwise everything it already queued would still fire — and resuming
+ * re-applies it to mail already in the inbox, as saving a rule does.
+ */
 export function useToggleSweepRule() {
   const queryClient = useQueryClient();
 
@@ -100,6 +105,18 @@ export function useToggleSweepRule() {
         .select()
         .single();
       if (error) throw error;
+
+      if (is_enabled) {
+        // The hourly backfill would catch up anyway, so a failure here is only logged.
+        requestApplySweepRule(id).catch(err => console.error('[Sweep] Re-apply after resume failed:', err));
+      } else {
+        const { error: cancelError } = await supabase
+          .from('sweep_queue')
+          .delete()
+          .eq('sweep_rule_id', id)
+          .eq('executed', false);
+        if (cancelError) throw cancelError;
+      }
       return data as DbSweepRule;
     },
     onMutate: async ({ id, is_enabled, userId }) => {
@@ -119,6 +136,7 @@ export function useToggleSweepRule() {
     },
     onSettled: (_data, _error, variables) => {
       queryClient.invalidateQueries({ queryKey: ['sweep_rules', variables.userId] });
+      queryClient.invalidateQueries({ queryKey: ['sweep_queue', variables.userId] });
     },
   });
 }
@@ -146,43 +164,43 @@ export function useDeleteSweepRule() {
  * the full emails table server-side and batch-insert matches into sweep_queue.
  *
  * The function reads criteria/action/delay from the DB row itself; the
- * client only needs to supply the rule id (plus the user id for cache
- * invalidation, which never leaves the client).
+ * client only needs to supply the rule id.
+ */
+async function requestApplySweepRule(ruleId: string): Promise<{ queued: number }> {
+  if (!supabase) throw new Error('Supabase not configured');
+
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error('No active session');
+
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  const res = await fetch(`${supabaseUrl}/functions/v1/apply-sweep-rule`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: supabaseAnonKey,
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({ rule_id: ruleId }),
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `Edge function failed: ${res.status}`);
+  }
+
+  return (await res.json()) as { queued: number };
+}
+
+/**
+ * Applies a rule to mail already in the inbox (see requestApplySweepRule).
+ * The user id is only for cache invalidation and never leaves the client.
  */
 export function useApplySweepRule() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({
-      ruleId,
-    }: {
-      ruleId: string;
-      userId: string;
-    }) => {
-      if (!supabase) throw new Error('Supabase not configured');
-
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('No active session');
-
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      const res = await fetch(`${supabaseUrl}/functions/v1/apply-sweep-rule`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          apikey: supabaseAnonKey,
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({ rule_id: ruleId }),
-      });
-
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || `Edge function failed: ${res.status}`);
-      }
-
-      return (await res.json()) as { queued: number };
-    },
+    mutationFn: ({ ruleId }: { ruleId: string; userId: string }) => requestApplySweepRule(ruleId),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['sweep_queue', variables.userId] });
     },
