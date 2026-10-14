@@ -1,20 +1,15 @@
 import { createAdminClient } from '../_shared/supabase-admin.ts';
 import { corsHeaders } from '../_shared/cors.ts';
+import {
+  type AdminClient,
+  type SweepRuleRow,
+  findLiveMatches,
+  resolveRuleCriteria,
+  terminalActionFor,
+} from '../_shared/sweepMatching.ts';
 
-interface Criterion {
-  field: string;
-  op: string;
-  value: string;
-}
-
-interface RuleRow {
-  id: string;
+interface RuleRow extends SweepRuleRow {
   user_id: string;
-  criteria: Criterion[];
-  criteria_logic: 'and' | 'or';
-  action: string;
-  delay_hours: number;
-  sender_pattern: string | null;
 }
 
 /**
@@ -81,53 +76,19 @@ Deno.serve(async (req) => {
 });
 
 async function processRule(
-  admin: ReturnType<typeof createAdminClient>,
+  admin: AdminClient,
   rule: RuleRow,
 ): Promise<number> {
-  // Normalize criteria.
-  let criteria: Criterion[] = Array.isArray(rule.criteria)
-    ? (rule.criteria as unknown[]).filter(
-        (c): c is Criterion =>
-          !!c && typeof c === 'object' &&
-          typeof (c as Criterion).field === 'string' &&
-          typeof (c as Criterion).op === 'string' &&
-          typeof (c as Criterion).value === 'string',
-      )
-    : [];
-  const logic: 'and' | 'or' = rule.criteria_logic === 'or' ? 'or' : 'and';
   const delayHours = Number(rule.delay_hours);
   if (!Number.isFinite(delayHours) || delayHours < 0) return 0;
 
-  if (criteria.length === 0) {
-    if (!rule.sender_pattern) return 0;
-    criteria = [{ field: 'from', op: 'contains', value: rule.sender_pattern }];
-  }
-
-  // Flatten stream refs (single-level, same as apply-sweep-rule).
-  const resolvedCriteria = await resolveStreamCriteria(admin, criteria, rule.user_id);
+  // Flatten stream refs and drop rules that can't match anything (shared
+  // with apply-sweep-rule, so an unresolvable stream never matches all mail).
+  const resolved = await resolveRuleCriteria(admin, rule.user_id, rule);
+  if (!resolved) return 0;
 
   // Find matching emails.
-  const matching: { id: string; received_at: string }[] = [];
-  const PAGE_SIZE = 1000;
-  let offset = 0;
-  while (true) {
-    let q = admin
-      .from('emails')
-      .select('id, received_at')
-      .eq('user_id', rule.user_id)
-      .eq('is_archived', false)
-      .eq('is_deleted', false);
-
-    q = applyCriteriaFilters(q, resolvedCriteria, logic);
-    q = q.range(offset, offset + PAGE_SIZE - 1);
-
-    const { data, error } = await q;
-    if (error) throw error;
-    if (!data || data.length === 0) break;
-    matching.push(...data);
-    if (data.length < PAGE_SIZE) break;
-    offset += PAGE_SIZE;
-  }
+  const matching = await findLiveMatches(admin, rule.user_id, resolved.criteria, resolved.logic);
 
   if (matching.length === 0) return 0;
 
@@ -137,11 +98,13 @@ async function processRule(
   const existing = new Set<string>();
   for (let i = 0; i < ids.length; i += 500) {
     const chunk = ids.slice(i, i + 500);
-    const { data } = await admin
+    const { data, error } = await admin
       .from('sweep_queue')
       .select('email_id')
       .eq('user_id', rule.user_id)
       .in('email_id', chunk);
+    // Without this lookup the upsert below would reset exempted rows to pending.
+    if (error) throw error;
     for (const r of data ?? []) existing.add((r as { email_id: string }).email_id);
   }
 
@@ -160,7 +123,7 @@ async function processRule(
 
   if (eligible.length === 0) return 0;
 
-  const terminalAction = rule.action === 'delete' || rule.action === 'keep_newest_delete' ? 'delete' : 'archive';
+  const terminalAction = terminalActionFor(rule.action);
 
   let queued = 0;
   for (let i = 0; i < eligible.length; i += 500) {
@@ -185,99 +148,6 @@ async function processRule(
   }
 
   return queued;
-}
-
-// ---------- Filter helpers (mirror apply-sweep-rule/index.ts) ----------
-
-async function resolveStreamCriteria(
-  admin: ReturnType<typeof createAdminClient>,
-  criteria: Criterion[],
-  userId: string,
-): Promise<Criterion[]> {
-  const resolved: Criterion[] = [];
-  for (const c of criteria) {
-    if (c.field !== 'stream') {
-      resolved.push(c);
-      continue;
-    }
-    let q = admin.from('columns').select('criteria, criteria_logic').eq('user_id', userId);
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(c.value);
-    if (isUuid) q = q.eq('id', c.value);
-    else q = q.ilike('name', c.value);
-    const { data } = await q.limit(1);
-    if (data && data.length > 0) {
-      const cc = data[0].criteria as Criterion[];
-      for (const x of cc) if (x.field !== 'stream') resolved.push(x);
-    }
-  }
-  return resolved;
-}
-
-// deno-lint-ignore no-explicit-any
-function applyCriteriaFilters(query: any, criteria: Criterion[], logic: 'and' | 'or') {
-  if (criteria.length === 0) return query;
-  if (logic === 'or') {
-    const orParts = criteria.map(c => buildFilterExpression(c)).flat();
-    return query.or(orParts.join(','));
-  }
-  for (const c of criteria) query = applyAndFilter(query, c);
-  return query;
-}
-
-function buildIlikePattern(op: string, value: string): string {
-  const v = value.replace(/^["']+|["']+$/g, '');
-  switch (op) {
-    case 'contains': return `%${v}%`;
-    case 'not_contains': return `%${v}%`;
-    case 'equals': return v;
-    case 'starts_with': return `${v}%`;
-    case 'ends_with': return `%${v}`;
-    default: return `%${v}%`;
-  }
-}
-
-function buildFilterExpression(c: Criterion): string[] {
-  const pattern = buildIlikePattern(c.op, c.value);
-  const isNot = c.op === 'not_contains';
-  const filterOp = isNot ? 'not.ilike' : 'ilike';
-  switch (c.field) {
-    case 'from':
-      return [
-        `sender_name.${filterOp}.${pattern}`,
-        `sender_email.${filterOp}.${pattern}`,
-      ];
-    case 'to': return [`recipients::text.${filterOp}.${pattern}`];
-    case 'subject': return [`subject.${filterOp}.${pattern}`];
-    case 'body':
-    case 'snippet': return [`snippet.${filterOp}.${pattern}`];
-    case 'label': return [`labels::text.${filterOp}.${pattern}`];
-    default: return [];
-  }
-}
-
-// deno-lint-ignore no-explicit-any
-function applyAndFilter(query: any, c: Criterion) {
-  const pattern = buildIlikePattern(c.op, c.value);
-  const isNot = c.op === 'not_contains';
-  switch (c.field) {
-    case 'from':
-      if (isNot) return query.not('sender_name', 'ilike', pattern).not('sender_email', 'ilike', pattern);
-      return query.or(`sender_name.ilike.${pattern},sender_email.ilike.${pattern}`);
-    case 'to':
-      if (isNot) return query.not('recipients::text', 'ilike', pattern);
-      return query.ilike('recipients::text', pattern);
-    case 'subject':
-      if (isNot) return query.not('subject', 'ilike', pattern);
-      return query.ilike('subject', pattern);
-    case 'body':
-    case 'snippet':
-      if (isNot) return query.not('snippet', 'ilike', pattern);
-      return query.ilike('snippet', pattern);
-    case 'label':
-      if (isNot) return query.not('labels::text', 'ilike', pattern);
-      return query.ilike('labels::text', pattern);
-    default: return query;
-  }
 }
 
 function jsonResponse(body: unknown, status = 200) {
