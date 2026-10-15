@@ -89,6 +89,16 @@ export function useSyncStore() {
       criteriaLogic: r.criteria_logic || 'and',
       action: r.action,
       delayHours: r.delay_hours,
+      ...(r.ai_check_enabled || r.ai_instruction
+        ? {
+          aiCheck: {
+            enabled: !!r.ai_check_enabled,
+            instruction: r.ai_instruction || '',
+            model: r.ai_model || 'claude-haiku-5-5',
+            allowDelete: !!r.ai_allow_delete,
+          },
+        }
+        : {}),
     }));
     useStore.setState({ sweepRules: mapped });
   }, [dbSweepRules]);
@@ -133,6 +143,7 @@ export function useSyncStore() {
           unread: e.is_unread,
           starred: e.is_starred,
           labels: e.labels,
+          isBulk: e.is_bulk,
         };
       });
     // Clear pending removals that the server has confirmed (no longer in results)
@@ -162,6 +173,8 @@ export function useSyncStore() {
   // re-triggering fire/archive animations when the server data refetches.
   // Items that are already past their scheduled_at are excluded — the server-side
   // sweep-execute function handles those; we don't animate them client-side.
+  // Sweeps held for a Claude check (waiting, unsure, failed) are always kept:
+  // they show their state instead of a countdown, and never run here.
   useEffect(() => {
     if (useMockData || !dbSweepQueue) return;
     const existing = useStore.getState().sweepEmails;
@@ -175,10 +188,12 @@ export function useSyncStore() {
 
       const scheduledAt = new Date(item.scheduled_at).getTime();
       const secondsRemaining = Math.max(0, Math.floor((scheduledAt - Date.now()) / 1000));
+      const aiStatus = item.ai_status === 'no_match' ? undefined : item.ai_status ?? undefined;
+      const held = aiStatus === 'pending' || aiStatus === 'unsure' || aiStatus === 'failed';
 
       // Skip items that are already past due — let the server executor handle them
       // Only show items that the client already knew about (prev exists) or still have time left
-      if (secondsRemaining <= 0 && !prev) continue;
+      if (secondsRemaining <= 0 && !prev && !held) continue;
 
       merged.push({
         id: item.email_id,
@@ -189,6 +204,7 @@ export function useSyncStore() {
         sweepSeconds: prev ? Math.min(prev.sweepSeconds, secondsRemaining) : secondsRemaining,
         exempted: false,
         action: item.action,
+        ...(aiStatus ? { aiStatus, aiReason: aiStatus === 'failed' || aiStatus === 'pending' ? item.ai_error : item.ai_reason } : {}),
       });
     }
     useStore.setState({ sweepEmails: merged });
@@ -220,7 +236,8 @@ export function useSyncStore() {
     if (newIds.length === 0) return;
 
     const { sweepRules, applySweepAction } = useStore.getState();
-    const enabledRules = sweepRules.filter(r => r.enabled);
+    // Claude-checked rules sweep only after the server's check, never locally.
+    const enabledRules = sweepRules.filter(r => r.enabled && !r.aiCheck?.enabled);
     if (enabledRules.length === 0) return;
 
     const { emails } = useStore.getState();

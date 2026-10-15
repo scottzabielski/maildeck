@@ -43,3 +43,21 @@ export function getCountdownClass(seconds: number): string {
   if (seconds < 3600) return 'warning';
   return '';
 }
+
+/**
+ * A sweep held by its rule's Claude check: waiting for Claude, or held after
+ * an unsure verdict or a failed check. Held sweeps never run in the app.
+ */
+export function isClaudeHeld(email: { aiStatus?: string }): boolean {
+  return email.aiStatus === 'pending' || email.aiStatus === 'unsure' || email.aiStatus === 'failed';
+}
+
+/** Badge text for a sweep a Claude check is holding (or has cleared). */
+export function claudeCheckLabel(status: string): string {
+  switch (status) {
+    case 'pending': return 'Claude checking';
+    case 'unsure': return 'Needs review';
+    case 'failed': return 'Check failed';
+    default: return 'Claude: match';
+  }
+}

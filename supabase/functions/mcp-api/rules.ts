@@ -6,7 +6,12 @@ import {
   planSweepRule,
   ruleCriteria,
 } from '../_shared/sweepMatching.ts';
+import { DEFAULT_CHECK_MODEL, createClaudeClient } from '../_shared/claude.ts';
+import { checkHash, checkSamples, estimatedCheckCost } from '../_shared/claudeCheck.ts';
+import { SupabaseCheckStore, providerBodySource } from '../_shared/claudeCheckStore.ts';
+import { DraftError, draftSweepRule } from '../_shared/ruleDraft.ts';
 import {
+  type AiCheck,
   ApiError,
   type Args,
   type Ctx,
@@ -16,6 +21,9 @@ import {
   RULE_FIELDS,
   type RuleRow,
   type StreamRow,
+  aiCheckArg,
+  aiKey,
+  aiView,
   badRequest,
   byId,
   criteriaArg,
@@ -33,7 +41,9 @@ import {
   optInt,
   optString,
   optUuid,
+  reqString,
   reqUuid,
+  ruleAiCheck,
   ruleProblems,
   senderLabel,
   sha256Hex,
@@ -42,6 +52,8 @@ import {
 
 export const ACTIONS = ['archive', 'delete', 'keep_newest_archive', 'keep_newest_delete'] as const;
 const MAX_DELAY_HOURS = 720;
+/** Messages a preview asks Claude about, at most. */
+const PREVIEW_CHECKS = 25;
 
 /** What a rule matches and does: what a preview describes and a confirm token covers. */
 interface RuleDef {
@@ -49,9 +61,12 @@ interface RuleDef {
   logic: 'and' | 'or';
   action: string;
   delay_hours: number;
+  /** The Claude check, on or off; null when the rule never had one. */
+  ai: AiCheck | null;
 }
 
 const isKeepNewest = (action: string) => action.startsWith('keep_newest_');
+const deletes = (action: string) => action === 'delete' || action === 'keep_newest_delete';
 
 function currentDef(rule: RuleRow): RuleDef {
   return {
@@ -59,11 +74,12 @@ function currentDef(rule: RuleRow): RuleDef {
     logic: rule.criteria_logic === 'or' ? 'or' : 'and',
     action: rule.action,
     delay_hours: rule.delay_hours,
+    ai: rule.ai_check_enabled || rule.ai_instruction ? ruleAiCheck(rule) : null,
   };
 }
 
 const defKey = (d: RuleDef) =>
-  JSON.stringify([d.criteria.map((c) => [c.field, c.op, c.value]), d.logic, d.action, d.delay_hours]);
+  JSON.stringify([d.criteria.map((c) => [c.field, c.op, c.value]), d.logic, d.action, d.delay_hours, aiKey(d.ai)]);
 
 /** Binds a preview to the exact definition it described and, for edits, the rule being edited. */
 const definitionHash = (d: RuleDef, ruleId?: string) => sha256Hex(JSON.stringify([ruleId ?? null, defKey(d)]));
@@ -106,18 +122,39 @@ async function ruleDefinition(ctx: Ctx, args: Args, existing: RuleRow | null, st
     }
   }
 
+  const ai = aiCheckArg(args.ai_check, base?.ai ?? null);
+  if (ai?.enabled && deletes(action) && !ai.allow_delete) {
+    throw badRequest(
+      'A rule with a Claude check can only archive. Use action "archive" (or "keep_newest_archive"), or set ai_check.allow_delete to true if the user explicitly wants Claude-checked mail deleted.',
+    );
+  }
+
   let delay = 0;
   if (!isKeepNewest(action)) {
     delay = optInt(args, 'delay_hours', 0, MAX_DELAY_HOURS) ??
       (base && !isKeepNewest(base.action) ? base.delay_hours : await defaultDelayHours(ctx));
   }
-  return { criteria, logic, action, delay_hours: delay };
+  return { criteria, logic, action, delay_hours: delay, ai };
 }
 
 /** The rule's one-line description, worded like MailDeck's editor. */
 function detailFor(d: RuleDef): string {
-  if (isKeepNewest(d.action)) return `Keep newest, ${d.action.replace('keep_newest_', '')} rest immediately`;
-  return d.action === 'delete' ? `Auto-delete after ${d.delay_hours}h` : `Auto-archive after ${d.delay_hours}h`;
+  const base = isKeepNewest(d.action)
+    ? `Keep newest, ${d.action.replace('keep_newest_', '')} rest immediately`
+    : d.action === 'delete'
+    ? `Auto-delete after ${d.delay_hours}h`
+    : `Auto-archive after ${d.delay_hours}h`;
+  return d.ai?.enabled ? `${base} if Claude confirms` : base;
+}
+
+/** The ai_* columns for a definition. */
+function aiColumns(ai: AiCheck | null) {
+  return {
+    ai_check_enabled: ai?.enabled ?? false,
+    ai_instruction: ai?.instruction ?? null,
+    ai_model: ai?.model ?? DEFAULT_CHECK_MODEL,
+    ai_allow_delete: ai?.enabled ? ai.allow_delete : false,
+  };
 }
 
 function findDuplicate(rules: RuleRow[], d: RuleDef, exceptId?: string): RuleRow | undefined {
@@ -137,7 +174,7 @@ async function checkExpectedHash(args: Args, d: RuleDef, ruleId?: string): Promi
   if (expected && expected !== await definitionHash(d, ruleId)) {
     throw new ApiError(
       409,
-      'This rule differs from the one previewed: its criteria, logic, action or delay, or the saved rule, changed since. Preview it again.',
+      'This rule differs from the one previewed: its criteria, logic, action, delay or Claude check, or the saved rule, changed since. Preview it again.',
     );
   }
 }
@@ -153,6 +190,7 @@ function ruleView(rule: RuleRow, streams: Map<string, StreamRow>) {
     logic: d.logic,
     criteria: criteriaView(d.criteria, streams),
     summary: describeCriteria(d.criteria, d.logic, streams),
+    ...(d.ai ? { ai_check: aiView(d.ai) } : {}),
     ...(rule.detail ? { detail: rule.detail } : {}),
     created_at: rule.created_at,
     updated_at: rule.updated_at,
@@ -169,23 +207,26 @@ async function queueSummary(ctx: Ctx, ruleId: string) {
       .eq('user_id', ctx.userId)
       .eq('sweep_rule_id', ruleId)
       .eq('executed', false);
-  const [pending, due, next] = await Promise.all([
+  const [pending, due, next, checking] = await Promise.all([
     pendingRows(),
-    pendingRows().lte('scheduled_at', nowIso),
+    pendingRows().lte('scheduled_at', nowIso).or('ai_status.is.null,ai_status.eq.match'),
     ctx.admin
       .from('sweep_queue')
       .select('scheduled_at')
       .eq('user_id', ctx.userId)
       .eq('sweep_rule_id', ruleId)
       .eq('executed', false)
+      .or('ai_status.is.null,ai_status.eq.match')
       .gt('scheduled_at', nowIso)
       .order('scheduled_at', { ascending: true })
       .limit(1),
+    pendingRows().eq('ai_status', 'pending'),
   ]);
-  for (const r of [pending, due, next]) if (r.error) throw r.error;
+  for (const r of [pending, due, next, checking]) if (r.error) throw r.error;
   return {
     pending: pending.count ?? 0,
     due_now: due.count ?? 0,
+    ...(checking.count ? { awaiting_check: checking.count } : {}),
     ...(next.data?.length ? { next_sweep_at: next.data[0].scheduled_at as string } : {}),
   };
 }
@@ -230,6 +271,26 @@ async function cancelPending(ctx: Ctx, ruleId: string): Promise<number> {
   return count ?? 0;
 }
 
+/** Verdicts already recorded for a question, by email id. */
+async function knownVerdicts(ctx: Ctx, hash: string): Promise<Map<string, string>> {
+  const verdicts = new Map<string, string>();
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await ctx.admin
+      .from('sweep_ai_checks')
+      .select('email_id, verdict')
+      .eq('user_id', ctx.userId)
+      .eq('check_hash', hash)
+      .not('verdict', 'is', null)
+      .order('id')
+      .range(offset, offset + 999);
+    if (error) throw error;
+    for (const r of (data ?? []) as { email_id: string | null; verdict: string }[]) {
+      if (r.email_id) verdicts.set(r.email_id, r.verdict);
+    }
+    if (!data || data.length < 1000) return verdicts;
+  }
+}
+
 interface PreviewEmail {
   id: string;
   received_at: string;
@@ -245,8 +306,15 @@ const PREVIEW_COLUMNS = 'id, received_at, sender_name, sender_email, subject, ac
  * What saving this definition would do to mail already in the inbox, using
  * the same planner apply-sweep-rule uses. For an edit (ruleId), the rule's
  * current pending sweeps count as cleared, since saving re-queues them.
+ * With runAiCheck, Claude checks up to 25 of the messages it would queue.
  */
-async function previewDefinition(ctx: Ctx, d: RuleDef, ruleId: string | undefined, streams: Map<string, StreamRow>) {
+async function previewDefinition(
+  ctx: Ctx,
+  d: RuleDef,
+  ruleId: string | undefined,
+  streams: Map<string, StreamRow>,
+  opts: { runAiCheck?: boolean } = {},
+) {
   const rule = {
     id: ruleId ?? 'preview',
     criteria: d.criteria,
@@ -255,6 +323,7 @@ async function previewDefinition(ctx: Ctx, d: RuleDef, ruleId: string | undefine
     delay_hours: d.delay_hours,
     sender_pattern: null,
   };
+  const ai = d.ai?.enabled && d.ai.instruction ? { instruction: d.ai.instruction, model: d.ai.model } : null;
   const [plan, accounts, inbox, currentPending] = await Promise.all([
     planSweepRule<PreviewEmail>(ctx.admin, ctx.userId, rule, { columns: PREVIEW_COLUMNS, ignorePendingOf: ruleId }),
     loadAccounts(ctx),
@@ -275,6 +344,7 @@ async function previewDefinition(ctx: Ctx, d: RuleDef, ruleId: string | undefine
       logic: d.logic,
       action: d.action,
       delay_hours: d.delay_hours,
+      ...(d.ai?.enabled ? { ai_check: aiView(d.ai) } : {}),
       summary: describeCriteria(d.criteria, d.logic, streams),
     },
     inbox_total: inboxTotal,
@@ -325,6 +395,49 @@ async function previewDefinition(ctx: Ctx, d: RuleDef, ruleId: string | undefine
   if (d.criteria.some((c) => c.field === 'stream')) {
     warnings.push("New mail for a stream-based rule is queued by MailDeck's hourly backfill, not the instant trigger.");
   }
+  if (d.criteria.some((c) => c.field === 'bulk')) {
+    warnings.push('The bulk flag is only known for mail synced since MailDeck started recording it (older mail gets it when Claude checks it), so a bulk condition skips most older mail.');
+  }
+
+  const newest = [...plan.eligible].sort((a, b) => Date.parse(b.received_at) - Date.parse(a.received_at));
+  let claude: Record<string, unknown> | undefined;
+  let checkedSamples: Map<string, { verdict: string | null; reason: string | null; cached: boolean; error?: string }> | undefined;
+  if (ai) {
+    const verdicts = await knownVerdicts(ctx, await checkHash(ai.model, ai.instruction));
+    const cached = { match: 0, no_match: 0, unsure: 0 };
+    let needed = 0;
+    for (const e of plan.eligible) {
+      const v = verdicts.get(e.id) as keyof typeof cached | undefined;
+      if (v) cached[v]++;
+      else needed++;
+    }
+    claude = {
+      model: ai.model,
+      checks_needed: needed,
+      ...(needed < plan.eligible.length ? { already_checked: cached } : {}),
+      estimated_cost_usd: Number((needed * estimatedCheckCost(ai.model)).toFixed(4)),
+      note: 'Each queued message waits for Claude before it can be swept: a match is swept on schedule, no_match is exempted, and unsure is held in the Review stream.',
+    };
+    if (opts.runAiCheck) {
+      const sample = newest.slice(0, PREVIEW_CHECKS);
+      const store = new SupabaseCheckStore(ctx.admin);
+      const emails = await store.emails(sample.map((e) => e.id));
+      const checked = await checkSamples(
+        store,
+        createClaudeClient(),
+        providerBodySource(ctx.admin),
+        ctx.userId,
+        { id: ruleId ?? null, ...ai },
+        sample.map((e) => emails.get(e.id)).filter((e) => !!e),
+      );
+      checkedSamples = new Map(checked.results.map((r) => [r.email_id, r]));
+      const tally = { match: 0, no_match: 0, unsure: 0, not_checked: 0 };
+      for (const r of checked.results) tally[(r.verdict ?? 'not_checked') as keyof typeof tally]++;
+      claude.sample_verdicts = tally;
+      claude.sample_cost_usd = Number(checked.costUsd.toFixed(4));
+      if (checked.stopped) claude.sample_stopped = checked.stopped;
+    }
+  }
 
   return {
     ...head,
@@ -337,14 +450,27 @@ async function previewDefinition(ctx: Ctx, d: RuleDef, ruleId: string | undefine
     ...(plan.done.size ? { already_swept_or_exempted: plan.done.size } : {}),
     ...(plan.keeper ? { keeps: emailView(plan.keeper) } : {}),
     ...(ruleId ? { cancels: currentPending.filter((id) => !eligibleIds.has(id)).length } : {}),
+    ...(claude ? { claude_check: claude } : {}),
     top_senders: [...senders.values()].sort((a, b) => b.count - a.count).slice(0, 10),
     by_account: [...perAccount]
       .map(([id, count]) => ({ account: accountEmail.get(id) ?? id, count }))
       .sort((a, b) => b.count - a.count),
-    samples: [...plan.eligible]
-      .sort((a, b) => Date.parse(b.received_at) - Date.parse(a.received_at))
-      .slice(0, 10)
-      .map((e) => ({ ...emailView(e), sweeps_at: sweepsAt(e) })),
+    samples: newest
+      .slice(0, checkedSamples ? PREVIEW_CHECKS : 10)
+      .map((e) => {
+        const c = checkedSamples?.get(e.id);
+        return {
+          ...emailView(e),
+          sweeps_at: sweepsAt(e),
+          ...(c
+            ? {
+              claude: c.verdict
+                ? { verdict: c.verdict, reason: c.reason, ...(c.cached ? { cached: true } : {}) }
+                : { verdict: null, error: c.error },
+            }
+            : {}),
+        };
+      }),
     ...(warnings.length ? { warnings } : {}),
   };
 }
@@ -361,7 +487,18 @@ export async function listRules(ctx: Ctx, args: Args) {
   ]);
   if (stats.error) throw stats.error;
   const streamsById = byId(streams);
-  type Stats = { rule_id: string; pending: number; next_sweep_at: string | null; swept_7d: number; swept_30d: number; last_swept_at: string | null };
+  type Stats = {
+    rule_id: string;
+    pending: number;
+    next_sweep_at: string | null;
+    swept_7d: number;
+    swept_30d: number;
+    last_swept_at: string | null;
+    awaiting_check: number;
+    review: number;
+    check_failed: number;
+    claude_exempted: number;
+  };
   const statsByRule = new Map(((stats.data ?? []) as Stats[]).map((s) => [s.rule_id, s]));
 
   const groups = new Map<string, RuleRow[]>();
@@ -374,6 +511,16 @@ export async function listRules(ctx: Ctx, args: Args) {
   const views = rules.map((r) => {
     const s = statsByRule.get(r.id);
     const problems = ruleProblems(r, streamsById);
+    const checks = r.ai_check_enabled
+      ? {
+        claude_checks: {
+          awaiting_check: Number(s?.awaiting_check ?? 0),
+          review: Number(s?.review ?? 0),
+          check_failed: Number(s?.check_failed ?? 0),
+          exempted_by_claude: Number(s?.claude_exempted ?? 0),
+        },
+      }
+      : {};
     return {
       ...ruleView(r, streamsById),
       pending: Number(s?.pending ?? 0),
@@ -381,11 +528,15 @@ export async function listRules(ctx: Ctx, args: Args) {
       swept_7d: Number(s?.swept_7d ?? 0),
       swept_30d: Number(s?.swept_30d ?? 0),
       ...(s?.last_swept_at ? { last_swept_at: s.last_swept_at } : {}),
+      ...checks,
       ...(problems.length ? { problems } : {}),
     };
   });
   const shown = query
-    ? views.filter((v) => v.name.toLowerCase().includes(query) || v.summary.toLowerCase().includes(query))
+    ? views.filter((v) =>
+      v.name.toLowerCase().includes(query) || v.summary.toLowerCase().includes(query) ||
+      (v.ai_check?.instruction ?? '').toLowerCase().includes(query)
+    )
     : views;
 
   return {
@@ -402,13 +553,17 @@ export async function listRules(ctx: Ctx, args: Args) {
 
 export async function previewRule(ctx: Ctx, args: Args) {
   const ruleId = optUuid(args, 'rule_id');
+  const runAiCheck = optBool(args, 'run_ai_check') ?? false;
   const [streams, rules, existing] = await Promise.all([
     loadStreams(ctx),
     loadRules(ctx),
     ruleId ? loadRule(ctx, ruleId) : Promise.resolve(null),
   ]);
   const d = await ruleDefinition(ctx, args, existing, streams);
-  const preview = await previewDefinition(ctx, d, ruleId, byId(streams));
+  if (runAiCheck && !d.ai?.enabled) {
+    throw badRequest('run_ai_check needs a rule with a Claude check: pass ai_check with an instruction (or preview a rule that has one).');
+  }
+  const preview = await previewDefinition(ctx, d, ruleId, byId(streams), { runAiCheck });
   const dup = findDuplicate(rules, d, ruleId);
   const warnings = [
     ...(preview.warnings ?? []),
@@ -451,6 +606,7 @@ export async function createRule(ctx: Ctx, args: Args) {
       criteria_logic: d.logic,
       action: d.action,
       delay_hours: d.delay_hours,
+      ...aiColumns(d.ai),
     })
     .select(RULE_COLUMNS)
     .single();
@@ -492,6 +648,11 @@ export async function updateRule(ctx: Ctx, args: Args) {
       sender_pattern: null,
     });
   }
+  // A paused check's saved instruction can change without changing what the rule sweeps.
+  const ai = aiColumns(d.ai);
+  if (args.ai_check !== undefined && JSON.stringify(ai) !== JSON.stringify(aiColumns(currentDef(existing).ai))) {
+    Object.assign(updates, ai);
+  }
   const before = ruleView(existing, streamsById);
   if (Object.keys(updates).length === 0) {
     return { rule: before, changed: false, ...(await queueSummary(ctx, ruleId)) };
@@ -515,7 +676,8 @@ export async function updateRule(ctx: Ctx, args: Args) {
     // Pausing stops the rule's pending sweeps too (unless asked to let them finish).
     if (existing.is_enabled && !keepPending) cancelled = await cancelPending(ctx, ruleId);
   } else if (matchChanged || !existing.is_enabled) {
-    // Start the rule's queue over so pending sweeps follow the new definition.
+    // Start the rule's queue over so pending sweeps follow the new definition
+    // (and, with a Claude check, wait for it).
     cancelled = await cancelPending(ctx, ruleId);
     const applied = await applySaved(ctx, row);
     requeued = applied.queued;
@@ -549,5 +711,49 @@ export async function deleteRule(ctx: Ctx, args: Args) {
     deleted: ruleView(existing, byId(streams)),
     cancelled,
     ...(keepPending ? { still_pending: stillPending } : {}),
+  };
+}
+
+/**
+ * Drafts a rule from a plain-English description (the same drafter as the
+ * app's editor) and previews it. Saves nothing: create it with rules.create.
+ */
+export async function draftRule(ctx: Ctx, args: Args) {
+  const description = reqString(args, 'description', 1000);
+  let result;
+  try {
+    result = await draftSweepRule(ctx.admin, createClaudeClient({ timeoutMs: 40_000 }), ctx.userId, description);
+  } catch (err) {
+    if (err instanceof DraftError) throw new ApiError(422, err.message);
+    throw err;
+  }
+  const { draft } = result;
+  const d: RuleDef = {
+    criteria: draft.criteria,
+    logic: draft.logic,
+    action: draft.action,
+    delay_hours: draft.delay_hours,
+    ai: draft.ai_check
+      ? { enabled: true, instruction: draft.ai_check.instruction, model: DEFAULT_CHECK_MODEL, allow_delete: false }
+      : null,
+  };
+  const streams = await loadStreams(ctx);
+  const { rule: _rule, ...preview } = await previewDefinition(ctx, d, undefined, byId(streams));
+  return {
+    draft: {
+      name: draft.name,
+      criteria: draft.criteria,
+      logic: draft.logic,
+      action: draft.action,
+      delay_hours: draft.delay_hours,
+      ai_check: draft.ai_check
+        ? { enabled: true, instruction: draft.ai_check.instruction, model: DEFAULT_CHECK_MODEL }
+        : null,
+    },
+    uses_claude_check: !!draft.ai_check,
+    explanation: result.explanation,
+    ...(result.warnings.length ? { draft_warnings: result.warnings } : {}),
+    draft_cost_usd: result.cost_usd,
+    preview,
   };
 }

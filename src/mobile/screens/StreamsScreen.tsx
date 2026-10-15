@@ -13,6 +13,8 @@ import { MobileMultiSelectBar } from '../components/MobileMultiSelectBar.tsx';
 import { usePullToRefresh } from '../hooks/usePullToRefresh.ts';
 import { useSyncAccount } from '../../hooks/useEmails.ts';
 import type { MobileNav } from '../navTypes.ts';
+import type { SweepCheck } from '../../types/index.ts';
+import { isClaudeHeld } from '../../lib/helpers.ts';
 
 const SWEEP_ID = '__sweep__';
 
@@ -107,21 +109,21 @@ export function StreamsScreen({ nav: _nav }: StreamsScreenProps) {
   }, [columnEmails, searchQuery, globalFilters, enabledSweepRules]);
 
   const sweepLookup = useMemo(() => {
-    const map = new Map<string, { seconds: number; action: string }>();
-    for (const s of sweepEmails) map.set(s.id, { seconds: s.sweepSeconds, action: s.action || 'archive' });
+    const map = new Map<string, { seconds: number; action: string; check?: SweepCheck }>();
+    for (const s of sweepEmails) map.set(s.id, { seconds: s.sweepSeconds, action: s.action || 'archive', ...(s.aiStatus ? { check: { status: s.aiStatus, reason: s.aiReason } } : {}) });
     return map;
   }, [sweepEmails]);
 
   const sweepRuleMatchLookup = useMemo(() => {
-    const map = new Map<string, { action: string; delayHours: number }>();
+    const map = new Map<string, { action: string; delayHours: number; claude?: boolean }>();
     if (enabledSweepRules.length === 0) return map;
     beginCriteriaMatch();
     for (const email of columnEmails) {
-      let bestRule: { action: string; delayHours: number } | null = null;
+      let bestRule: { action: string; delayHours: number; claude?: boolean } | null = null;
       for (const rule of enabledSweepRules) {
         if (emailMatchesCriteria(email, rule.criteria, rule.criteriaLogic)) {
           if (!bestRule || rule.delayHours < bestRule.delayHours) {
-            bestRule = { action: rule.action, delayHours: rule.delayHours };
+            bestRule = { action: rule.action, delayHours: rule.delayHours, claude: !!rule.aiCheck?.enabled };
           }
         }
       }
@@ -133,7 +135,11 @@ export function StreamsScreen({ nav: _nav }: StreamsScreenProps) {
 
   // === Sweep view ===
   const filteredSweepEmails = useMemo(
-    () => sweepEmails.filter(e => !disabledAccountIds.has(e.accountId)),
+    () => {
+      // Sweeps held by a Claude check go after the ones counting down.
+      const shown = sweepEmails.filter(e => !disabledAccountIds.has(e.accountId));
+      return [...shown.filter(e => !isClaudeHeld(e)), ...shown.filter(e => isClaudeHeld(e))];
+    },
     [sweepEmails, disabledAccountIds],
   );
 
@@ -306,6 +312,7 @@ export function StreamsScreen({ nav: _nav }: StreamsScreenProps) {
                 columnId={selectedColumn.id}
                 sweepSeconds={sweepLookup.get(email.id)?.seconds}
                 sweepAction={sweepLookup.get(email.id)?.action}
+                sweepCheck={sweepLookup.get(email.id)?.check}
                 matchedSweepRule={sweepRuleMatchLookup.get(email.id)}
               />
             ))

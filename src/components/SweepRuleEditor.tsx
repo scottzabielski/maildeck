@@ -3,8 +3,22 @@ import { Icons } from './ui/Icons.tsx';
 import { useStore } from '../store/index.ts';
 import { useAuth } from '../hooks/useAuth.ts';
 import { useCreateSweepRule, useUpdateSweepRule, useApplySweepRule } from '../hooks/useSweepRules.ts';
-import { useSuggestRuleName } from '../hooks/useSuggestions.ts';
-import type { Criterion } from '../types/index.ts';
+import { useSuggestRuleName, type RuleDraftResult } from '../hooks/useSuggestions.ts';
+import { ClaudeCheckFields, RuleDescriptionBuilder } from './ClaudeRuleFields.tsx';
+import { NO_CLAUDE_CHECK, claudeCheckColumns, claudeCheckError } from '../lib/claudeCheck.ts';
+import type { ClaudeCheck, Criterion } from '../types/index.ts';
+
+const DELAY_OPTIONS = [1, 6, 12, 24, 48, 168];
+const FIELD_LABELS: Record<string, string> = { from: 'From', to: 'To', subject: 'Subject', body: 'Body', label: 'Label' };
+
+function describeCriterion(c: Criterion, columns: { id: string; name: string }[]): string {
+  if (c.field === 'stream') {
+    const col = columns.find(col => col.id === c.value);
+    return `Stream: "${col?.name || c.value}"`;
+  }
+  if (c.field === 'bulk') return c.value === 'true' ? 'Bulk mail' : 'Not bulk mail';
+  return `${FIELD_LABELS[c.field] || c.field} ${c.op.replace('_', ' ')} "${c.value}"`;
+}
 
 const useMockData = import.meta.env.VITE_USE_MOCK_DATA === 'true';
 
@@ -27,6 +41,7 @@ export function SweepRuleEditor() {
   const [name, setName] = useState('');
   const [nameUserEdited, setNameUserEdited] = useState(false);
   const [suggestError, setSuggestError] = useState<string | null>(null);
+  const [claudeCheck, setClaudeCheck] = useState<ClaudeCheck>(NO_CLAUDE_CHECK);
 
   // Compute the compound action from mode + subAction
   const selectedAction = mode === 'keep_newest' ? `keep_newest_${subAction}` : subAction;
@@ -34,6 +49,8 @@ export function SweepRuleEditor() {
   useEffect(() => {
     if (sweepRuleEditor) {
       setSuggestError(null);
+      setError(null);
+      setClaudeCheck(NO_CLAUDE_CHECK);
       if (sweepRuleEditor.ruleId) {
         // Edit mode: pre-fill from existing rule
         const rule = sweepRules.find(r => r.id === sweepRuleEditor.ruleId);
@@ -51,6 +68,7 @@ export function SweepRuleEditor() {
           setDelayHours(rule.delayHours);
           setName(rule.name);
           setNameUserEdited(true);
+          if (rule.aiCheck) setClaudeCheck({ ...rule.aiCheck });
         }
       } else if (sweepRuleEditor.blank) {
         // Create mode: blank new rule
@@ -88,14 +106,7 @@ export function SweepRuleEditor() {
   const derivedName = useMemo(() => {
     return criteria
       .filter(c => c.value.trim())
-      .map(c => {
-        if (c.field === 'stream') {
-          const col = columns.find(col => col.id === c.value);
-          return `Stream: "${col?.name || c.value}"`;
-        }
-        const fieldLabel = { from: 'From', to: 'To', subject: 'Subject', body: 'Body', label: 'Label' }[c.field] || c.field;
-        return `${fieldLabel} ${c.op.replace('_', ' ')} "${c.value}"`;
-      })
+      .map(c => describeCriterion(c, columns))
       .join(criteriaLogic === 'and' ? ' AND ' : ' OR ') || 'Untitled rule';
   }, [criteria, criteriaLogic, columns]);
 
@@ -161,6 +172,12 @@ export function SweepRuleEditor() {
       // there is one. If there's no source email, only auto-clear when the
       // current value was a prefill from the previous field — never wipe the
       // user's typed value to empty.
+      if (key === 'field' && val === 'bulk') {
+        return { ...r, field: val, op: 'equals', value: 'true' };
+      }
+      if (key === 'field' && r.field === 'bulk') {
+        return { ...r, field: val, op: 'contains', value: prefillForField(val) };
+      }
       if (key === 'field') {
         const nextSourceValue = prefillForField(val);
         const wasPrefill = prefillValues.has(r.value);
@@ -231,6 +248,26 @@ export function SweepRuleEditor() {
   const handleSuggestName = () => runSuggestName(true);
   runSuggestNameRef.current = runSuggestName;
 
+  // A rule drafted from plain English replaces the editor's fields.
+  const applyDraft = ({ draft }: RuleDraftResult) => {
+    setCriteria(draft.criteria.map(c => ({ ...c })));
+    setCriteriaLogic(draft.logic);
+    if (draft.action.startsWith('keep_newest_')) {
+      setMode('keep_newest');
+      setSubAction(draft.action.replace('keep_newest_', '') as 'archive' | 'delete');
+    } else {
+      setMode('always');
+      setSubAction(draft.action === 'delete' ? 'delete' : 'archive');
+    }
+    if (!draft.action.startsWith('keep_newest_')) setDelayHours(draft.delay_hours);
+    setName(draft.name);
+    setNameUserEdited(true);
+    setClaudeCheck(draft.ai_check
+      ? { ...NO_CLAUDE_CHECK, enabled: true, instruction: draft.ai_check.instruction, model: claudeCheck.model }
+      : { ...claudeCheck, enabled: false });
+    setError(null);
+  };
+
   const handleApply = async () => {
     const validCriteria = criteria.filter(c => c.value.trim());
     if (validCriteria.length === 0) return;
@@ -251,31 +288,37 @@ export function SweepRuleEditor() {
     if (duplicate) {
       const dupDesc = duplicate.criteria
         .filter(c => c.value.trim())
-        .map(c => {
-          if (c.field === 'stream') {
-            const col = columns.find(col => col.id === c.value);
-            return `Stream: "${col?.name || c.value}"`;
-          }
-          const fieldLabel = { from: 'From', to: 'To', subject: 'Subject', body: 'Body', label: 'Label' }[c.field] || c.field;
-          return `${fieldLabel} ${c.op.replace('_', ' ')} "${c.value}"`;
-        })
+        .map(c => describeCriterion(c, columns))
         .join(duplicate.criteriaLogic === 'and' ? ' AND ' : ' OR ');
       setError(`A rule with these criteria already exists: ${dupDesc}`);
       return;
     }
 
+    const checkProblem = claudeCheckError(claudeCheck, selectedAction);
+    if (checkProblem) {
+      setError(checkProblem);
+      return;
+    }
+    // Claude-checked rules sweep only once the server's check says match, so
+    // they're never applied to loaded mail here.
+    const usesClaude = claudeCheck.enabled;
+    const aiCheck = usesClaude || claudeCheck.instruction.trim()
+      ? { ...claudeCheck, instruction: claudeCheck.instruction.trim(), allowDelete: usesClaude && claudeCheck.allowDelete }
+      : undefined;
+
     const ruleName = effectiveName;
     const effectiveDelay = mode === 'keep_newest' ? 0 : delayHours;
-    const detail = mode === 'keep_newest'
+    const baseDetail = mode === 'keep_newest'
       ? `Keep newest, ${subAction} rest immediately`
       : subAction === 'delete'
         ? `Auto-delete after ${effectiveDelay}h`
         : `Auto-archive after ${effectiveDelay}h`;
+    const detail = usesClaude ? `${baseDetail} if Claude confirms` : baseDetail;
 
     if (isEditMode) {
       // Edit mode: update existing rule
       const ruleId = sweepRuleEditor!.ruleId!;
-      const updates = { name: ruleName, detail, criteria: validCriteria, criteriaLogic, action: selectedAction, delayHours: effectiveDelay };
+      const updates = { name: ruleName, detail, criteria: validCriteria, criteriaLogic, action: selectedAction, delayHours: effectiveDelay, aiCheck };
 
       // Update in-memory store immediately
       updateSweepRule(ruleId, updates);
@@ -292,6 +335,7 @@ export function SweepRuleEditor() {
             criteria_logic: criteriaLogic,
             action: selectedAction,
             delay_hours: effectiveDelay,
+            ...claudeCheckColumns(claudeCheck),
           });
         } catch (err) {
           console.error('[Sweep] Failed to update rule:', err);
@@ -309,7 +353,7 @@ export function SweepRuleEditor() {
       }
 
       // Immediate client-side feedback for loaded emails
-      applySweepAction(validCriteria, criteriaLogic, selectedAction, effectiveDelay);
+      if (!usesClaude) applySweepAction(validCriteria, criteriaLogic, selectedAction, effectiveDelay);
       closeSweepRuleEditor();
       return;
     }
@@ -317,8 +361,8 @@ export function SweepRuleEditor() {
     if (useMockData || !user?.id) {
       // Mock mode or no auth: update in-memory store only
       console.warn('[Sweep] No user auth, falling back to in-memory only. useMockData:', useMockData, 'user:', user?.id);
-      applySweepAction(validCriteria, criteriaLogic, selectedAction, effectiveDelay);
-      addSweepRule({ name: ruleName, detail, criteria: validCriteria, criteriaLogic, action: selectedAction, delayHours: effectiveDelay });
+      if (!usesClaude) applySweepAction(validCriteria, criteriaLogic, selectedAction, effectiveDelay);
+      addSweepRule({ name: ruleName, detail, criteria: validCriteria, criteriaLogic, action: selectedAction, delayHours: effectiveDelay, aiCheck });
     } else {
       // Real mode: persist rule to DB, then queue matching emails
       const userId = user.id;
@@ -336,6 +380,7 @@ export function SweepRuleEditor() {
           criteria_logic: criteriaLogic,
           action: selectedAction,
           delay_hours: effectiveDelay,
+          ...claudeCheckColumns(claudeCheck),
         });
       } catch (err) {
         console.error('[Sweep] Failed to create rule:', err);
@@ -358,7 +403,7 @@ export function SweepRuleEditor() {
       // the UI updates immediately without waiting on the React Query refetch.
       // Previously we called addSweepRule() which minted a phantom "sr-..." id,
       // producing a duplicate row that broke any later DB op (e.g., delete).
-      applySweepAction(validCriteria, criteriaLogic, selectedAction, effectiveDelay);
+      if (!usesClaude) applySweepAction(validCriteria, criteriaLogic, selectedAction, effectiveDelay);
       useStore.setState(s => ({
         sweepRules: [
           ...s.sweepRules,
@@ -371,6 +416,7 @@ export function SweepRuleEditor() {
             criteriaLogic,
             action: selectedAction,
             delayHours: effectiveDelay,
+            aiCheck,
           },
         ],
       }));
@@ -407,6 +453,7 @@ export function SweepRuleEditor() {
         </div>
         {/* Body */}
         <div className="criteria-body">
+          {!useMockData && <RuleDescriptionBuilder onDraft={applyDraft} />}
           {/* Name field with AI suggest */}
           <div className="sweep-rule-name-field">
             <input
@@ -453,11 +500,12 @@ export function SweepRuleEditor() {
                   <option value="subject">Subject</option>
                   <option value="body">Body</option>
                   <option value="label">Label</option>
+                  <option value="bulk">Bulk mail</option>
                   <option value="stream">Stream</option>
                 </select>
-                {row.field === 'stream' ? (
+                {row.field === 'stream' || row.field === 'bulk' ? (
                   <span className="filter-select" style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--text-tertiary)', fontStyle: 'italic', cursor: 'default' }}>
-                    is part of
+                    {row.field === 'stream' ? 'is part of' : 'is'}
                   </span>
                 ) : (
                   <select
@@ -483,6 +531,17 @@ export function SweepRuleEditor() {
                     {columns.map(col => (
                       <option key={col.id} value={col.id}>{col.name}</option>
                     ))}
+                  </select>
+                ) : row.field === 'bulk' ? (
+                  <select
+                    className="filter-select"
+                    style={{ flex: 1 }}
+                    value={row.value}
+                    onChange={(e) => updateRow(i, 'value', e.target.value)}
+                    title="Mailing-list mail: it has List-Unsubscribe, List-Id or Precedence: bulk headers"
+                  >
+                    <option value="true">yes (mailing list)</option>
+                    <option value="false">no</option>
                   </select>
                 ) : (
                   <input
@@ -575,9 +634,11 @@ export function SweepRuleEditor() {
                 <option value="24">24 hours</option>
                 <option value="48">48 hours</option>
                 <option value="168">7 days</option>
+                {!DELAY_OPTIONS.includes(delayHours) && <option value={String(delayHours)}>{delayHours} hours</option>}
               </select>
             )}
           </div>
+          {!useMockData && <ClaudeCheckFields value={claudeCheck} onChange={setClaudeCheck} action={selectedAction} />}
         </div>
         {error && <div style={{ padding: '0 16px 8px', color: '#ef4444', fontSize: '12px' }}>{error}</div>}
         {/* Footer */}

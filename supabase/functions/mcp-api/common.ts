@@ -3,9 +3,11 @@ import {
   type Criterion,
   SERVER_FIELDS,
   UUID_RE,
+  bulkValue,
   normalizeCriteria,
   ruleCriteria,
 } from '../_shared/sweepMatching.ts';
+import { CHECK_MODELS, DEFAULT_CHECK_MODEL } from '../_shared/claude.ts';
 
 /** An error whose message is safe to show the caller (and, through the MCP, the model). */
 export class ApiError extends Error {
@@ -22,6 +24,11 @@ export const badRequest = (message: string) => new ApiError(400, message);
  */
 export function isFilterSyntaxError(err: unknown): boolean {
   return !!err && typeof err === 'object' && /^PGRST1\d\d$/.test(String((err as { code?: unknown }).code));
+}
+
+/** Postgres gave up on a query (statement_timeout): usually a busy moment, not a bad request. */
+export function isStatementTimeout(err: unknown): boolean {
+  return !!err && typeof err === 'object' && (err as { code?: unknown }).code === '57014';
 }
 
 export const FILTER_SYNTAX_MESSAGE =
@@ -103,8 +110,10 @@ export function uuidList(args: Args, key: string, max: number): string[] {
 
 // ---- Criteria ----------------------------------------------------------------
 
-export const RULE_FIELDS = ['from', 'to', 'subject', 'body', 'label', 'stream'] as const;
-export const STREAM_FIELDS = ['from', 'to', 'subject', 'body', 'label', 'stream', 'sweep'] as const;
+export const RULE_FIELDS = ['from', 'to', 'subject', 'body', 'label', 'bulk', 'stream'] as const;
+export const STREAM_FIELDS = ['from', 'to', 'subject', 'body', 'label', 'bulk', 'stream', 'sweep'] as const;
+/** Values of a stream's "sweep" condition. */
+export const SWEEP_VALUES = ['has rule', 'no rule', 'needs review', 'check failed'] as const;
 export const MATCH_OPS = ['contains', 'not_contains', 'equals', 'starts_with', 'ends_with'] as const;
 export const LOGICS = ['and', 'or'] as const;
 
@@ -140,8 +149,15 @@ export function criteriaArg(
     }
     if (field === 'sweep') {
       const v = value.trim().toLowerCase();
-      if (v !== 'has rule' && v !== 'no rule') throw badRequest(`criteria[${i}]: sweep takes "has rule" or "no rule"`);
+      if (!(SWEEP_VALUES as readonly string[]).includes(v)) {
+        throw badRequest(`criteria[${i}]: sweep takes ${SWEEP_VALUES.map((x) => `"${x}"`).join(', ')}`);
+      }
       return { field, op: 'equals', value: v };
+    }
+    if (field === 'bulk') {
+      const v = value.trim().toLowerCase();
+      if (!['true', 'false', 'yes', 'no'].includes(v)) throw badRequest(`criteria[${i}]: bulk takes "true" or "false"`);
+      return { field, op: 'equals', value: String(bulkValue(v)) };
     }
     if (typeof op !== 'string' || !(MATCH_OPS as readonly string[]).includes(op)) {
       throw badRequest(`criteria[${i}].op must be one of ${MATCH_OPS.join(', ')}`);
@@ -175,6 +191,7 @@ const FIELD_LABELS: Record<string, string> = {
   body: 'Body',
   snippet: 'Body',
   label: 'Label',
+  bulk: 'Bulk',
   sweep: 'Sweep',
 };
 
@@ -184,6 +201,7 @@ export function describeCriteria(criteria: Criterion[], logic: string, streams: 
     .filter((c) => c.value.trim())
     .map((c) => {
       if (c.field === 'stream') return `Stream: "${streamFor(streams, c.value)?.name ?? c.value}"`;
+      if (c.field === 'bulk') return bulkValue(c.value) ? 'Bulk mail' : 'Not bulk mail';
       return `${FIELD_LABELS[c.field] ?? c.field} ${c.op.replace('_', ' ')} "${c.value}"`;
     })
     .join(logic === 'or' ? ' OR ' : ' AND ');
@@ -263,12 +281,80 @@ export interface RuleRow {
   criteria_logic: string;
   action: string;
   delay_hours: number;
+  ai_check_enabled: boolean;
+  ai_instruction: string | null;
+  ai_model: string;
+  ai_allow_delete: boolean;
   created_at: string;
   updated_at: string;
 }
 
 export const RULE_COLUMNS =
-  'id, name, detail, is_enabled, sender_pattern, criteria, criteria_logic, action, delay_hours, created_at, updated_at';
+  'id, name, detail, is_enabled, sender_pattern, criteria, criteria_logic, action, delay_hours, ai_check_enabled, ai_instruction, ai_model, ai_allow_delete, created_at, updated_at';
+
+// ---- Claude checks -----------------------------------------------------------
+
+export interface AiCheck {
+  enabled: boolean;
+  instruction: string | null;
+  model: string;
+  allow_delete: boolean;
+}
+
+export const CHECK_MODEL_IDS = Object.keys(CHECK_MODELS);
+
+export function ruleAiCheck(rule: RuleRow): AiCheck {
+  return {
+    enabled: rule.ai_check_enabled,
+    instruction: rule.ai_instruction,
+    model: rule.ai_model || DEFAULT_CHECK_MODEL,
+    allow_delete: rule.ai_allow_delete,
+  };
+}
+
+/**
+ * A rule's Claude check from a caller, layered over the rule's current one:
+ * omitted keeps it, null turns it off, an object changes the fields it has.
+ * Passing an instruction turns the check on unless enabled says otherwise.
+ */
+export function aiCheckArg(raw: unknown, base: AiCheck | null): AiCheck | null {
+  if (raw === undefined) return base;
+  const off: AiCheck = {
+    enabled: false,
+    instruction: base?.instruction ?? null,
+    model: base?.model ?? DEFAULT_CHECK_MODEL,
+    allow_delete: false,
+  };
+  if (raw === null) return off;
+  if (typeof raw !== 'object' || Array.isArray(raw)) throw badRequest('ai_check must be an object or null');
+  const a = raw as Args;
+  const instruction = optString(a, 'instruction', 1000);
+  const enabled = optBool(a, 'enabled') ?? (instruction !== undefined ? true : base?.enabled ?? false);
+  const model = optString(a, 'model', 60) || base?.model || DEFAULT_CHECK_MODEL;
+  if (!CHECK_MODEL_IDS.includes(model)) throw badRequest(`ai_check.model must be one of ${CHECK_MODEL_IDS.join(', ')}`);
+  const check: AiCheck = {
+    enabled,
+    instruction: instruction ?? base?.instruction ?? null,
+    model,
+    allow_delete: optBool(a, 'allow_delete') ?? base?.allow_delete ?? false,
+  };
+  if (check.enabled && (check.instruction ?? '').length < 10) {
+    throw badRequest('ai_check.instruction is required (10-1000 characters): describe in plain English which messages this rule should sweep.');
+  }
+  return check;
+}
+
+/** The check as it changes what a rule sweeps: off, or its question and delete permission. */
+export const aiKey = (ai: AiCheck | null) => (ai?.enabled ? [ai.instruction, ai.model, ai.allow_delete] : null);
+
+export function aiView(ai: AiCheck) {
+  return {
+    enabled: ai.enabled,
+    instruction: ai.instruction,
+    model: ai.model,
+    ...(ai.allow_delete ? { allow_delete: true } : {}),
+  };
+}
 
 export async function loadRules(ctx: Ctx): Promise<RuleRow[]> {
   const { data, error } = await ctx.admin

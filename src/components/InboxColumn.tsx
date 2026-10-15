@@ -7,6 +7,7 @@ import { useSyncAccount } from '../hooks/useEmails.ts';
 import { emailMatchesCriteria, beginCriteriaMatch, endCriteriaMatch } from '../lib/emailFilter.ts';
 import { scrollPositions } from '../lib/scrollPositions.ts';
 import { registerColumn, unregisterColumn } from '../lib/columnRegistry.ts';
+import type { SweepCheck } from '../types/index.ts';
 
 interface InboxColumnProps {
   accountId: string | null;
@@ -40,9 +41,9 @@ export function InboxColumn({ accountId, columnOrder = 0 }: InboxColumnProps) {
   }, [emails, accountId, disabledAccountIds, searchQuery]);
 
   const sweepLookup = useMemo(() => {
-    const map = new Map<string, { seconds: number; action: string }>();
+    const map = new Map<string, { seconds: number; action: string; check?: SweepCheck }>();
     for (const s of sweepEmails) {
-      map.set(s.id, { seconds: s.sweepSeconds, action: s.action || 'archive' });
+      map.set(s.id, { seconds: s.sweepSeconds, action: s.action || 'archive', ...(s.aiStatus ? { check: { status: s.aiStatus, reason: s.aiReason } } : {}) });
     }
     return map;
   }, [sweepEmails]);
@@ -59,15 +60,15 @@ export function InboxColumn({ accountId, columnOrder = 0 }: InboxColumnProps) {
 
   // Match each displayed email against enabled sweep rules → { action, delayHours } for the soonest rule
   const sweepRuleMatchLookup = useMemo(() => {
-    const map = new Map<string, { action: string; delayHours: number }>();
+    const map = new Map<string, { action: string; delayHours: number; claude?: boolean }>();
     if (enabledSweepRules.length === 0) return map;
     beginCriteriaMatch();
     for (const email of columnEmails) {
-      let bestRule: { action: string; delayHours: number } | null = null;
+      let bestRule: { action: string; delayHours: number; claude?: boolean } | null = null;
       for (const rule of enabledSweepRules) {
         if (emailMatchesCriteria(email, rule.criteria, rule.criteriaLogic)) {
           if (!bestRule || rule.delayHours < bestRule.delayHours) {
-            bestRule = { action: rule.action, delayHours: rule.delayHours };
+            bestRule = { action: rule.action, delayHours: rule.delayHours, claude: !!rule.aiCheck?.enabled };
           }
         }
       }
@@ -223,6 +224,7 @@ export function InboxColumn({ accountId, columnOrder = 0 }: InboxColumnProps) {
               multiSelectedIds={multiSelectedIds}
               sweepSeconds={sweepLookup.get(email.id)?.seconds}
               sweepAction={sweepLookup.get(email.id)?.action}
+              sweepCheck={sweepLookup.get(email.id)?.check}
               matchedSweepRule={sweepRuleMatchLookup.get(email.id)}
               matchedStreams={matchedStreamsMap.get(email.id)}
             />

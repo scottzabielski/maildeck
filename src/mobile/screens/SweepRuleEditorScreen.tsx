@@ -3,9 +3,13 @@ import { Icons } from '../../components/ui/Icons.tsx';
 import { useStore } from '../../store/index.ts';
 import { useAuth } from '../../hooks/useAuth.ts';
 import { useCreateSweepRule, useUpdateSweepRule, useApplySweepRule } from '../../hooks/useSweepRules.ts';
-import { useSuggestRuleName } from '../../hooks/useSuggestions.ts';
+import { useSuggestRuleName, type RuleDraftResult } from '../../hooks/useSuggestions.ts';
 import { MobileTopBar } from '../components/MobileTopBar.tsx';
-import type { Criterion } from '../../types/index.ts';
+import { ClaudeCheckFields, RuleDescriptionBuilder } from '../../components/ClaudeRuleFields.tsx';
+import { NO_CLAUDE_CHECK, claudeCheckColumns, claudeCheckError } from '../../lib/claudeCheck.ts';
+import type { ClaudeCheck, Criterion } from '../../types/index.ts';
+
+const DELAY_OPTIONS = [1, 6, 12, 24, 48, 168];
 
 const useMockData = import.meta.env.VITE_USE_MOCK_DATA === 'true';
 
@@ -36,12 +40,15 @@ export function SweepRuleEditorScreen() {
   const [name, setName] = useState('');
   const [nameUserEdited, setNameUserEdited] = useState(false);
   const [suggestError, setSuggestError] = useState<string | null>(null);
+  const [claudeCheck, setClaudeCheck] = useState<ClaudeCheck>(NO_CLAUDE_CHECK);
 
   const selectedAction = mode === 'keep_newest' ? `keep_newest_${subAction}` : subAction;
 
   useEffect(() => {
     if (!sweepRuleEditor) return;
     setSuggestError(null);
+    setError(null);
+    setClaudeCheck(NO_CLAUDE_CHECK);
     if (sweepRuleEditor.ruleId) {
       const rule = sweepRules.find(r => r.id === sweepRuleEditor.ruleId);
       if (rule) {
@@ -57,6 +64,7 @@ export function SweepRuleEditorScreen() {
         setDelayHours(rule.delayHours);
         setName(rule.name);
         setNameUserEdited(true);
+        if (rule.aiCheck) setClaudeCheck({ ...rule.aiCheck });
       }
     } else if (sweepRuleEditor.blank) {
       setCriteria([{ field: 'from', op: 'contains', value: '' }]);
@@ -95,6 +103,7 @@ export function SweepRuleEditorScreen() {
           const col = columns.find(col => col.id === c.value);
           return `Stream: "${col?.name || c.value}"`;
         }
+        if (c.field === 'bulk') return c.value === 'true' ? 'Bulk mail' : 'Not bulk mail';
         const fieldLabel = { from: 'From', to: 'To', subject: 'Subject', body: 'Body', label: 'Label' }[c.field] || c.field;
         return `${fieldLabel} ${c.op.replace('_', ' ')} "${c.value}"`;
       })
@@ -152,6 +161,12 @@ export function SweepRuleEditorScreen() {
   const updateRow = (i: number, key: keyof Criterion, val: string) => {
     setCriteria(prev => prev.map((r, idx) => {
       if (idx !== i) return r;
+      if (key === 'field' && val === 'bulk') {
+        return { ...r, field: val, op: 'equals', value: 'true' };
+      }
+      if (key === 'field' && r.field === 'bulk') {
+        return { ...r, field: val, op: 'contains', value: prefillForField(val) };
+      }
       if (key === 'field') {
         const nextSourceValue = prefillForField(val);
         const wasPrefill = prefillValues.has(r.value);
@@ -217,6 +232,26 @@ export function SweepRuleEditorScreen() {
   const handleSuggestName = () => runSuggestName(true);
   runSuggestNameRef.current = runSuggestName;
 
+  // A rule drafted from plain English replaces the editor's fields.
+  const applyDraft = ({ draft }: RuleDraftResult) => {
+    setCriteria(draft.criteria.map(c => ({ ...c })));
+    setCriteriaLogic(draft.logic);
+    if (draft.action.startsWith('keep_newest_')) {
+      setMode('keep_newest');
+      setSubAction(draft.action.replace('keep_newest_', '') as 'archive' | 'delete');
+    } else {
+      setMode('always');
+      setSubAction(draft.action === 'delete' ? 'delete' : 'archive');
+      setDelayHours(draft.delay_hours);
+    }
+    setName(draft.name);
+    setNameUserEdited(true);
+    setClaudeCheck(draft.ai_check
+      ? { ...NO_CLAUDE_CHECK, enabled: true, instruction: draft.ai_check.instruction, model: claudeCheck.model }
+      : { ...claudeCheck, enabled: false });
+    setError(null);
+  };
+
   const handleApply = async () => {
     const valid = criteria.filter(c => c.value.trim());
     if (valid.length === 0) return;
@@ -235,17 +270,30 @@ export function SweepRuleEditorScreen() {
       return;
     }
 
+    const checkProblem = claudeCheckError(claudeCheck, selectedAction);
+    if (checkProblem) {
+      setError(checkProblem);
+      return;
+    }
+    // Claude-checked rules sweep only once the server's check says match, so
+    // they're never applied to loaded mail here.
+    const usesClaude = claudeCheck.enabled;
+    const aiCheck = usesClaude || claudeCheck.instruction.trim()
+      ? { ...claudeCheck, instruction: claudeCheck.instruction.trim(), allowDelete: usesClaude && claudeCheck.allowDelete }
+      : undefined;
+
     const ruleName = effectiveName;
     const effectiveDelay = mode === 'keep_newest' ? 0 : delayHours;
-    const detail = mode === 'keep_newest'
+    const baseDetail = mode === 'keep_newest'
       ? `Keep newest, ${subAction} rest immediately`
       : subAction === 'delete'
         ? `Auto-delete after ${effectiveDelay}h`
         : `Auto-archive after ${effectiveDelay}h`;
+    const detail = usesClaude ? `${baseDetail} if Claude confirms` : baseDetail;
 
     if (isEditMode) {
       const ruleId = sweepRuleEditor.ruleId!;
-      const updates = { name: ruleName, detail, criteria: valid, criteriaLogic, action: selectedAction, delayHours: effectiveDelay };
+      const updates = { name: ruleName, detail, criteria: valid, criteriaLogic, action: selectedAction, delayHours: effectiveDelay, aiCheck };
       updateSweepRule(ruleId, updates);
       if (!useMockData && user?.id) {
         try {
@@ -258,6 +306,7 @@ export function SweepRuleEditorScreen() {
             criteria_logic: criteriaLogic,
             action: selectedAction,
             delay_hours: effectiveDelay,
+            ...claudeCheckColumns(claudeCheck),
           });
           applyMutation.mutateAsync({ ruleId, userId: user.id }).catch(err =>
             console.error('[Sweep] Re-apply failed:', err),
@@ -268,14 +317,14 @@ export function SweepRuleEditorScreen() {
           return;
         }
       }
-      applySweepAction(valid, criteriaLogic, selectedAction, effectiveDelay);
+      if (!usesClaude) applySweepAction(valid, criteriaLogic, selectedAction, effectiveDelay);
       closeSweepRuleEditor();
       return;
     }
 
     if (useMockData || !user?.id) {
-      applySweepAction(valid, criteriaLogic, selectedAction, effectiveDelay);
-      addSweepRule({ name: ruleName, detail, criteria: valid, criteriaLogic, action: selectedAction, delayHours: effectiveDelay });
+      if (!usesClaude) applySweepAction(valid, criteriaLogic, selectedAction, effectiveDelay);
+      addSweepRule({ name: ruleName, detail, criteria: valid, criteriaLogic, action: selectedAction, delayHours: effectiveDelay, aiCheck });
     } else {
       let created;
       try {
@@ -289,6 +338,7 @@ export function SweepRuleEditorScreen() {
           criteria_logic: criteriaLogic,
           action: selectedAction,
           delay_hours: effectiveDelay,
+          ...claudeCheckColumns(claudeCheck),
         });
       } catch (err) {
         console.error('[Sweep] Failed to create rule:', err);
@@ -302,7 +352,7 @@ export function SweepRuleEditorScreen() {
       }
       // Mirror the DB row into the in-memory store with its real UUID;
       // addSweepRule would mint a phantom "sr-..." id and double the row.
-      applySweepAction(valid, criteriaLogic, selectedAction, effectiveDelay);
+      if (!usesClaude) applySweepAction(valid, criteriaLogic, selectedAction, effectiveDelay);
       useStore.setState(s => ({
         sweepRules: [
           ...s.sweepRules,
@@ -315,6 +365,7 @@ export function SweepRuleEditorScreen() {
             criteriaLogic,
             action: selectedAction,
             delayHours: effectiveDelay,
+            aiCheck,
           },
         ],
       }));
@@ -343,6 +394,11 @@ export function SweepRuleEditorScreen() {
           }
         />
         <div className="mobile-editor-body">
+          {!useMockData && (
+            <div className="mobile-editor-field">
+              <RuleDescriptionBuilder onDraft={applyDraft} />
+            </div>
+          )}
           <div className="mobile-editor-field">
             <label className="mobile-editor-label">Name</label>
             <div className="mobile-editor-name-row">
@@ -388,11 +444,12 @@ export function SweepRuleEditorScreen() {
                   <option value="subject">Subject</option>
                   <option value="body">Body</option>
                   <option value="label">Label</option>
+                  <option value="bulk">Bulk mail</option>
                   <option value="stream">Stream</option>
                 </select>
-                {row.field === 'stream' ? (
+                {row.field === 'stream' || row.field === 'bulk' ? (
                   <span className="mobile-editor-select" style={{ fontStyle: 'italic', color: 'var(--text-tertiary)' }}>
-                    is part of
+                    {row.field === 'stream' ? 'is part of' : 'is'}
                   </span>
                 ) : (
                   <select
@@ -417,6 +474,15 @@ export function SweepRuleEditorScreen() {
                     {columns.map(c => (
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
+                  </select>
+                ) : row.field === 'bulk' ? (
+                  <select
+                    className="mobile-editor-input"
+                    value={row.value}
+                    onChange={(e) => updateRow(i, 'value', e.target.value)}
+                  >
+                    <option value="true">yes (mailing list)</option>
+                    <option value="false">no</option>
                   </select>
                 ) : (
                   <input
@@ -492,7 +558,15 @@ export function SweepRuleEditorScreen() {
                 <option value="24">24 hours</option>
                 <option value="48">48 hours</option>
                 <option value="168">7 days</option>
+                {!DELAY_OPTIONS.includes(delayHours) && <option value={String(delayHours)}>{delayHours} hours</option>}
               </select>
+            </div>
+          )}
+
+          {!useMockData && (
+            <div className="mobile-editor-field">
+              <label className="mobile-editor-label">Claude check</label>
+              <ClaudeCheckFields value={claudeCheck} onChange={setClaudeCheck} action={selectedAction} />
             </div>
           )}
 

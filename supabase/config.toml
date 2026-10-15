@@ -429,6 +429,14 @@ verify_jwt = false
 [functions.mcp-api]
 verify_jwt = false
 
+# Called by pg_cron with the sweep-backfill shared secret (checked in code).
+[functions.sweep-check]
+verify_jwt = false
+
+# Called by the app with a user JWT, checked in code (requireUser).
+[functions.draft-sweep-rule]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

@@ -3220,3 +3220,168 @@ button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
   gap: 8px;
   flex-wrap: wrap;
 }
+
+/* ============================================================
+   Claude checks on sweep rules
+   ============================================================ */
+/* Rule editor: "Describe the rule" and the Claude check fields (desktop and mobile) */
+.claude-rule-builder {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.claude-rule-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.claude-rule-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  min-height: 44px;
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.4;
+  padding: 8px 10px;
+  background: var(--bg-base);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+}
+
+.claude-rule-textarea:focus {
+  outline: none;
+  border-color: var(--violet);
+}
+
+.claude-rule-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.claude-rule-hint {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  flex: 1;
+  min-width: 160px;
+}
+
+.claude-rule-error {
+  font-size: 12px;
+  color: var(--red);
+}
+
+.claude-rule-result {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  border-left: 3px solid var(--green);
+}
+
+.claude-rule-result.uses-claude { border-left-color: var(--violet); }
+
+.claude-rule-warning {
+  margin-top: 4px;
+  color: var(--amber);
+}
+
+.claude-check-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  background: var(--bg-base);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.claude-check-fields.enabled { border-color: var(--glow-violet); }
+
+.claude-check-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.claude-check-toggle input { margin-top: 2px; accent-color: var(--violet); }
+.claude-check-toggle.danger { color: var(--red); }
+.claude-check-toggle.danger input { accent-color: var(--red); }
+
+.claude-check-model {
+  font-family: var(--font-body);
+  font-size: 12px;
+  padding: 4px 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+}
+
+/* Email cards and the Sweep column: a sweep held by a Claude check */
+.email-sweep-badge.claude-pending,
+.email-sweep-badge.claude-match { color: var(--violet); background: var(--glow-violet); }
+.email-sweep-badge.claude-unsure { color: var(--amber); background: var(--glow-amber); }
+.email-sweep-badge.claude-failed { color: var(--red); background: var(--glow-red); }
+
+.sweep-countdown.claude-pending { color: var(--violet); }
+.sweep-countdown.claude-unsure { color: var(--amber); }
+.sweep-countdown.claude-failed { color: var(--red); }
+
+.sweep-claude-note {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin: -2px 0 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sweep-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+
+.sweep-actions .exempt-btn { margin-left: 0; }
+
+.sweep-rule-tag.claude { color: var(--violet); background: var(--glow-violet); }
+
+/* Settings: Claude check budget */
+.claude-budget-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.claude-budget-input input {
+  width: 72px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 4px 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+}
+
+.claude-budget-paused {
+  margin-top: 2px;
+  color: var(--amber);
+}

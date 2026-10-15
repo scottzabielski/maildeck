@@ -12,6 +12,10 @@ export interface DbSweepRule {
   criteria_logic: 'and' | 'or';
   action: string;
   delay_hours: number;
+  ai_check_enabled?: boolean;
+  ai_instruction?: string | null;
+  ai_model?: string;
+  ai_allow_delete?: boolean;
 }
 
 export function useSweepRules(userId: string | undefined) {

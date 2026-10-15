@@ -6,6 +6,7 @@ import type {
 import { fireEmailAction } from '../lib/emailActions.ts';
 import { emailMatchesCriteria } from '../lib/emailFilter.ts';
 import { getColumnEntry } from '../lib/columnRegistry.ts';
+import { isClaudeHeld } from '../lib/helpers.ts';
 import { supabase } from '../lib/supabase.ts';
 
 // ========================================
@@ -236,6 +237,10 @@ export interface StoreState {
   markSelectedUnread: () => void;
   moveToSweep: (emailId: string) => void;
   exemptSweepEmail: (emailId: string) => void;
+  /** Sweeps a message Claude was unsure about, or couldn't check, on its schedule. */
+  approveSweepCheck: (emailId: string) => void;
+  /** Asks Claude again about a message whose check failed. */
+  retrySweepCheck: (emailId: string) => void;
   undoLastAction: () => void;
   clearUndo: () => void;
   toggleSweepRule: (ruleId: string) => void;
@@ -611,6 +616,41 @@ export const useStore = create<StoreState>((set, get) => ({
     });
   },
 
+  approveSweepCheck: (emailId) => {
+    const reason = 'Approved in MailDeck';
+    if (supabase) {
+      supabase
+        .from('sweep_queue')
+        .update({ ai_status: 'match', ai_reason: reason, ai_error: null })
+        .eq('email_id', emailId)
+        .eq('executed', false)
+        .in('ai_status', ['unsure', 'failed'])
+        .then(({ error }) => {
+          if (error) console.error('Failed to approve sweep:', error);
+        });
+    }
+    set(s => ({
+      sweepEmails: s.sweepEmails.map(e => e.id === emailId ? { ...e, aiStatus: 'match', aiReason: reason } : e),
+    }));
+  },
+
+  retrySweepCheck: (emailId) => {
+    if (supabase) {
+      supabase
+        .from('sweep_queue')
+        .update({ ai_status: 'pending', ai_attempts: 0, ai_next_attempt_at: new Date().toISOString(), ai_error: null })
+        .eq('email_id', emailId)
+        .eq('executed', false)
+        .eq('ai_status', 'failed')
+        .then(({ error }) => {
+          if (error) console.error('Failed to retry check:', error);
+        });
+    }
+    set(s => ({
+      sweepEmails: s.sweepEmails.map(e => e.id === emailId ? { ...e, aiStatus: 'pending', aiReason: null } : e),
+    }));
+  },
+
   undoLastAction: () => {
     const action = get().undoAction;
     if (!action) return;
@@ -838,7 +878,8 @@ export const useStore = create<StoreState>((set, get) => ({
     const s = get();
     const expired: { id: string; action: string }[] = [];
     const updated = s.sweepEmails.map(e => {
-      if (e.expiring) return e;
+      // Held by a Claude check: only the server sweeps it, once Claude says match.
+      if (e.expiring || isClaudeHeld(e)) return e;
       const next = Math.max(0, e.sweepSeconds - 1);
       if (next <= 0) {
         const email = s.emails.find(em => em.id === e.id);

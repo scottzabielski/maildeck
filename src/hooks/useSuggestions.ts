@@ -39,6 +39,30 @@ export function useSuggestRuleName() {
   });
 }
 
+/** A rule drafted from a plain-English description (the draft-sweep-rule edge function). */
+export interface RuleDraftResult {
+  draft: {
+    name: string;
+    criteria: Criterion[];
+    logic: 'and' | 'or';
+    action: string;
+    delay_hours: number;
+    /** Null when regular conditions are enough. */
+    ai_check: { enabled: true; instruction: string } | null;
+  };
+  /** Why the rule does or doesn't need a Claude check. */
+  explanation: string;
+  warnings: string[];
+  cost_usd: number;
+}
+
+export function useDraftSweepRule() {
+  return useMutation({
+    mutationFn: async (input: { description: string }) =>
+      callEdgeFunction<RuleDraftResult>('draft-sweep-rule', input),
+  });
+}
+
 export function useSuggestConsolidations() {
   return useMutation({
     mutationFn: async () => {

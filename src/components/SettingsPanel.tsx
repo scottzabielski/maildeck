@@ -8,6 +8,7 @@ import { useDeleteColumn } from '../hooks/useColumns.ts';
 import { useDeleteEmailAccount } from '../hooks/useEmailAccounts.ts';
 import { ConnectAccountFlow } from './settings/ConnectAccountFlow.tsx';
 import { SweepSuggestionsModal } from './SweepSuggestionsModal.tsx';
+import { ClaudeBudgetSettings } from './ClaudeBudgetSettings.tsx';
 import { connectGmailAccount, connectOutlookAccount } from '../lib/oauth.ts';
 import type { Account, Column as ColumnType, Criterion, SweepRule } from '../types/index.ts';
 
@@ -306,6 +307,7 @@ function formatCriteriaSummary(rule: SweepRule): string {
       const col = columns.find(col => col.id === c.value);
       return `Stream: "${col?.name || c.value}"`;
     }
+    if (c.field === 'bulk') return c.value === 'true' ? 'Bulk mail' : 'Not bulk mail';
     const fieldLabel = { from: 'From', to: 'To', subject: 'Subject', body: 'Body', label: 'Label' }[c.field] || c.field;
     const opLabel = c.op.replace('_', ' ');
     return `${fieldLabel} ${opLabel} "${c.value}"`;
@@ -363,6 +365,7 @@ function SettingsSweepRules({ sweepRules, toggleSweepRule }: { sweepRules: Sweep
           </select>
         </div>
       </div>
+      {!useMockData && <ClaudeBudgetSettings variant="desktop" />}
       <div className="settings-content-title" style={{ marginTop: '20px' }}>Rules</div>
       <button
         className="settings-add-btn settings-ai-review-btn"
@@ -428,6 +431,9 @@ function SettingsSweepRules({ sweepRules, toggleSweepRule }: { sweepRules: Sweep
                 rule.action
               }</span>
               <span className="sweep-rule-tag">all accounts</span>
+              {rule.aiCheck?.enabled && (
+                <span className="sweep-rule-tag claude" title={rule.aiCheck.instruction}>Claude check</span>
+              )}
             </div>
           </div>
         ))}

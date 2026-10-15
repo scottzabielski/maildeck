@@ -1,6 +1,7 @@
 import { createAdminClient } from '../_shared/supabase-admin.ts';
 import { corsHeaders } from '../_shared/cors.ts';
 import { AuthError, requireUser } from '../_shared/auth.ts';
+import { fetchGmailContent, fetchOutlookContent } from '../_shared/emailContent.ts';
 
 /**
  * Fetch the full HTML/text body of an email on demand.
@@ -76,15 +77,11 @@ Deno.serve(async (req) => {
     let bodyHtml: string | null = null;
     let bodyText: string | null = null;
 
-    if (account.provider === 'gmail') {
-      const result = await fetchGmailBody(accessToken, email.provider_message_id);
-      bodyHtml = result.html;
-      bodyText = result.text;
-    } else {
-      const result = await fetchOutlookBody(accessToken, email.provider_message_id);
-      bodyHtml = result.html;
-      bodyText = result.text;
-    }
+    const result = account.provider === 'gmail'
+      ? await fetchGmailContent(accessToken, email.provider_message_id)
+      : await fetchOutlookContent(accessToken, email.provider_message_id);
+    bodyHtml = result.html;
+    bodyText = result.text;
 
     // Cache in database — re-assert user_id for defense in depth.
     await supabase
@@ -99,109 +96,6 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: (err as Error).message }, 500);
   }
 });
-
-// ============================================================
-// Gmail body fetch
-// ============================================================
-
-async function fetchGmailBody(
-  accessToken: string,
-  messageId: string,
-): Promise<{ html: string | null; text: string | null }> {
-  const res = await fetch(
-    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=FULL`,
-    { headers: { Authorization: `Bearer ${accessToken}` } },
-  );
-
-  if (!res.ok) {
-    throw new Error(`Gmail API error (${res.status}): ${await res.text()}`);
-  }
-
-  const msg = await res.json();
-  return extractGmailBody(msg.payload);
-}
-
-function extractGmailBody(
-  payload: Record<string, unknown>,
-): { html: string | null; text: string | null } {
-  let html: string | null = null;
-  let text: string | null = null;
-
-  const mimeType = payload.mimeType as string;
-  const body = payload.body as { data?: string; size?: number } | undefined;
-  const parts = payload.parts as Array<Record<string, unknown>> | undefined;
-
-  // Single-part message
-  if (body?.data) {
-    const decoded = base64UrlDecode(body.data);
-    if (mimeType === 'text/html') html = decoded;
-    else if (mimeType === 'text/plain') text = decoded;
-  }
-
-  // Multipart — recurse into parts
-  if (parts) {
-    for (const part of parts) {
-      const partMime = part.mimeType as string;
-      const partBody = part.body as { data?: string } | undefined;
-      const subParts = part.parts as Array<Record<string, unknown>> | undefined;
-
-      if (partBody?.data) {
-        const decoded = base64UrlDecode(partBody.data);
-        if (partMime === 'text/html' && !html) html = decoded;
-        else if (partMime === 'text/plain' && !text) text = decoded;
-      }
-
-      // Recurse for nested multipart (e.g. multipart/alternative inside multipart/mixed)
-      if (subParts) {
-        const nested = extractGmailBody(part);
-        if (nested.html && !html) html = nested.html;
-        if (nested.text && !text) text = nested.text;
-      }
-    }
-  }
-
-  return { html, text };
-}
-
-function base64UrlDecode(data: string): string {
-  // Gmail returns base64url-encoded data
-  const base64 = data.replace(/-/g, '+').replace(/_/g, '/');
-  const binary = atob(base64);
-  // Handle UTF-8 properly
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return new TextDecoder('utf-8').decode(bytes);
-}
-
-// ============================================================
-// Outlook body fetch
-// ============================================================
-
-async function fetchOutlookBody(
-  accessToken: string,
-  messageId: string,
-): Promise<{ html: string | null; text: string | null }> {
-  const res = await fetch(
-    `https://graph.microsoft.com/v1.0/me/messages/${messageId}?$select=body,uniqueBody`,
-    { headers: { Authorization: `Bearer ${accessToken}` } },
-  );
-
-  if (!res.ok) {
-    throw new Error(`Graph API error (${res.status}): ${await res.text()}`);
-  }
-
-  const msg = await res.json();
-  const body = msg.body as { contentType: string; content: string } | undefined;
-
-  if (!body) return { html: null, text: null };
-
-  if (body.contentType === 'html') {
-    return { html: body.content, text: null };
-  }
-  return { html: null, text: body.content };
-}
 
 // ============================================================
 // Token helpers (same as sync-emails)

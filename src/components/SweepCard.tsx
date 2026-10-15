@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Icons } from './ui/Icons.tsx';
 import { useStore } from '../store/index.ts';
-import { formatCountdown, getCountdownClass } from '../lib/helpers.ts';
+import { formatCountdown, getCountdownClass, claudeCheckLabel, isClaudeHeld } from '../lib/helpers.ts';
 import type { SweepEmail } from '../types/index.ts';
 
 // Pre-warm audio context on first user interaction so autoplay isn't blocked
@@ -54,6 +54,8 @@ interface SweepCardProps {
 export function SweepCard({ email }: SweepCardProps) {
   const accounts = useStore(s => s.accounts);
   const exemptSweepEmail = useStore(s => s.exemptSweepEmail);
+  const approveSweepCheck = useStore(s => s.approveSweepCheck);
+  const retrySweepCheck = useStore(s => s.retrySweepCheck);
   const removeSweepEmail = useStore(s => s.removeSweepEmail);
   const selectEmail = useStore(s => s.selectEmail);
   const soundVolume = useStore(s => s.soundVolume);
@@ -61,6 +63,11 @@ export function SweepCard({ email }: SweepCardProps) {
   const cdClass = getCountdownClass(email.sweepSeconds);
   const isExpiring = email.expiring === true;
   const isDelete = email.action === 'delete';
+  // Held by a Claude check: no countdown, nothing runs until Claude says match.
+  const held = isClaudeHeld(email);
+  const claudeNote = email.aiStatus === 'match' || email.aiStatus === 'unsure'
+    ? email.aiReason && `Claude: ${email.aiReason}`
+    : email.aiStatus === 'failed' ? email.aiReason : null;
   const cardRef = useRef<HTMLDivElement>(null);
   const [capturedHeight, setCapturedHeight] = useState<number | null>(null);
 
@@ -126,21 +133,49 @@ export function SweepCard({ email }: SweepCardProps) {
         {account && <span className="email-account-dot" style={{ background: account.color }} />}
       </div>
       <div className="sweep-subject">{email.subject}</div>
+      {claudeNote && <div className="sweep-claude-note">{claudeNote}</div>}
       <div className="sweep-bottom">
-        <div className={`sweep-countdown ${cdClass}`}>
-          <Icons.Clock />
-          {isExpiring
-            ? (isDelete ? 'Deleting...' : 'Archiving...')
-            : <>{isDelete ? 'Delete' : 'Archive'} in {formatCountdown(email.sweepSeconds)}</>
-          }
-        </div>
+        {held ? (
+          <div className={`sweep-countdown claude-${email.aiStatus}`}>
+            <Icons.Sparkle />
+            {claudeCheckLabel(email.aiStatus!)}
+          </div>
+        ) : (
+          <div className={`sweep-countdown ${cdClass}`}>
+            <Icons.Clock />
+            {isExpiring
+              ? (isDelete ? 'Deleting...' : 'Archiving...')
+              : <>{isDelete ? 'Delete' : 'Archive'} in {formatCountdown(email.sweepSeconds)}</>
+            }
+          </div>
+        )}
         {!isExpiring && (
-          <button
-            className="exempt-btn"
-            onClick={(e) => { e.stopPropagation(); exemptSweepEmail(email.id); }}
-          >
-            Exempt
-          </button>
+          <div className="sweep-actions">
+            {(email.aiStatus === 'unsure' || email.aiStatus === 'failed') && (
+              <button
+                className="exempt-btn"
+                title="Sweep it on schedule anyway"
+                onClick={(e) => { e.stopPropagation(); approveSweepCheck(email.id); }}
+              >
+                Sweep
+              </button>
+            )}
+            {email.aiStatus === 'failed' && (
+              <button
+                className="exempt-btn"
+                title="Ask Claude again"
+                onClick={(e) => { e.stopPropagation(); retrySweepCheck(email.id); }}
+              >
+                Retry
+              </button>
+            )}
+            <button
+              className="exempt-btn"
+              onClick={(e) => { e.stopPropagation(); exemptSweepEmail(email.id); }}
+            >
+              Exempt
+            </button>
+          </div>
         )}
       </div>
 

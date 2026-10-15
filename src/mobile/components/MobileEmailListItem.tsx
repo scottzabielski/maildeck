@@ -1,8 +1,8 @@
 import { useState, useRef, useCallback } from 'react';
 import { Icons } from '../../components/ui/Icons.tsx';
 import { useStore } from '../../store/index.ts';
-import { formatTime, formatCountdown, getCountdownClass } from '../../lib/helpers.ts';
-import type { Email, Account } from '../../types/index.ts';
+import { formatTime, formatCountdown, getCountdownClass, claudeCheckLabel, isClaudeHeld } from '../../lib/helpers.ts';
+import type { Email, Account, SweepCheck } from '../../types/index.ts';
 
 const txtArea = typeof document !== 'undefined' ? document.createElement('textarea') : null;
 function decodeHTML(html: string): string {
@@ -24,7 +24,9 @@ interface MobileEmailListItemProps {
   sourceAccountId?: string;
   sweepSeconds?: number;
   sweepAction?: string;
-  matchedSweepRule?: { action: string; delayHours: number };
+  /** Set when the sweep belongs to a Claude-checked rule. */
+  sweepCheck?: SweepCheck;
+  matchedSweepRule?: { action: string; delayHours: number; claude?: boolean };
   matchedStreams?: Array<{ id: string; accent: string }>;
 }
 
@@ -36,6 +38,7 @@ export function MobileEmailListItem({
   sourceAccountId,
   sweepSeconds,
   sweepAction,
+  sweepCheck,
   matchedSweepRule,
   matchedStreams,
 }: MobileEmailListItemProps) {
@@ -160,9 +163,11 @@ export function MobileEmailListItem({
     e.preventDefault();
   }, []);
 
-  let effectiveSweepSeconds = sweepSeconds;
+  // A sweep held by a Claude check shows its state instead of a countdown.
+  const held = !!sweepCheck && isClaudeHeld({ aiStatus: sweepCheck.status });
+  let effectiveSweepSeconds = held ? undefined : sweepSeconds;
   let effectiveSweepAction = sweepAction;
-  if (effectiveSweepSeconds == null && matchedSweepRule && !isExempted) {
+  if (effectiveSweepSeconds == null && !held && matchedSweepRule && !matchedSweepRule.claude && !isExempted) {
     const ageSec = Math.floor((Date.now() - email.time) / 1000);
     const remaining = matchedSweepRule.delayHours * 3600 - ageSec;
     if (remaining > 0) {
@@ -173,7 +178,7 @@ export function MobileEmailListItem({
     }
   }
   const hasSweep = effectiveSweepSeconds != null && effectiveSweepSeconds > 0;
-  const hasSweepRule = hasSweep || (!!matchedSweepRule && !isExempted);
+  const hasSweepRule = hasSweep || held || (!!matchedSweepRule && !isExempted);
 
   const className = [
     'mobile-email-row',
@@ -240,6 +245,14 @@ export function MobileEmailListItem({
           </div>
           <div className="mobile-email-subject">{decodeHTML(email.subject)}</div>
           <div className="mobile-email-snippet">{decodeHTML(email.snippet)}</div>
+          {held && (
+            <div className="mobile-email-sweep-row">
+              <span className={`mobile-email-sweep-badge claude-${sweepCheck!.status}`}>
+                <Icons.Sparkle />
+                {claudeCheckLabel(sweepCheck!.status)}
+              </span>
+            </div>
+          )}
           {hasSweep && (
             <div className="mobile-email-sweep-row">
               <span className={`mobile-email-sweep-badge ${getCountdownClass(effectiveSweepSeconds!)}`}>
@@ -248,11 +261,12 @@ export function MobileEmailListItem({
               </span>
             </div>
           )}
-          {!hasSweep && matchedSweepRule && !isExempted && (
+          {!hasSweep && !held && matchedSweepRule && !isExempted && (
             <div className="mobile-email-sweep-row">
               <span className="mobile-email-sweep-badge rule-matched">
                 <Icons.Sweep />
-                {matchedSweepRule.action === 'delete' || matchedSweepRule.action === 'keep_newest_delete' ? 'Delete' : 'Archive'} (sweep rule)
+                {matchedSweepRule.action === 'delete' || matchedSweepRule.action === 'keep_newest_delete' ? 'Delete' : 'Archive'}
+                {matchedSweepRule.claude ? ' if Claude agrees' : ' (sweep rule)'}
               </span>
             </div>
           )}

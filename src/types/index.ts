@@ -42,7 +42,15 @@ export type Email = {
   unread: boolean;
   starred: boolean;
   labels?: string[];
+  /** Came from a mailing list (List-Unsubscribe, List-Id or Precedence headers); null when not known. */
+  isBulk?: boolean | null;
 };
+
+/** A Claude-checked sweep's state: waiting, cleared to sweep, unsure (held for review), or failed. */
+export type ClaudeCheckStatus = 'pending' | 'match' | 'unsure' | 'failed';
+
+/** What a card shows about a sweep's Claude check. */
+export type SweepCheck = { status: ClaudeCheckStatus; reason?: string | null };
 
 export type SweepEmail = {
   id: string;
@@ -53,6 +61,18 @@ export type SweepEmail = {
   exempted: boolean;
   action?: string;
   expiring?: boolean;
+  /** Set when the rule that queued it has a Claude check. */
+  aiStatus?: ClaudeCheckStatus;
+  /** Claude's reason, or why the check failed. */
+  aiReason?: string | null;
+};
+
+/** A sweep rule's Claude check: a plain-English description each match is checked against. */
+export type ClaudeCheck = {
+  enabled: boolean;
+  instruction: string;
+  model: string;
+  allowDelete: boolean;
 };
 
 export type SweepRule = {
@@ -64,6 +84,7 @@ export type SweepRule = {
   criteriaLogic: 'and' | 'or';
   action: string;
   delayHours: number;
+  aiCheck?: ClaudeCheck;
 };
 
 export type ContextMenuState = {

@@ -26,7 +26,10 @@ export interface SweepRuleRow {
 }
 
 /** Fields the server can evaluate. The client also understands "stream" and "sweep". */
-export const SERVER_FIELDS = new Set(['from', 'to', 'subject', 'body', 'snippet', 'label']);
+export const SERVER_FIELDS = new Set(['from', 'to', 'subject', 'body', 'snippet', 'label', 'bulk']);
+
+/** A bulk condition's value: "true" (mailing-list mail) or anything else for false. */
+export const bulkValue = (value: string) => ['true', 'yes'].includes(value.trim().toLowerCase());
 
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -322,6 +325,7 @@ export async function applySweepRule(
  *   subject → subject
  *   body/snippet → snippet
  *   label   → labels_text (computed column: labels::text)
+ *   bulk    → is_bulk = true/false (an unknown flag matches neither)
  *
  * PostgREST drops casts in filters, so `recipients::text` can't be used
  * here; the computed columns (migration 018) give the same text.
@@ -387,6 +391,8 @@ function buildFilterExpression(c: Criterion): string[] {
       return [`snippet.${filterOp}.${pattern}`];
     case 'label':
       return [`labels_text.${filterOp}.${pattern}`];
+    case 'bulk':
+      return [`is_bulk.eq.${bulkValue(c.value)}`];
     default:
       return [];
   }
@@ -433,6 +439,8 @@ function applyAndFilter(query: any, c: Criterion) {
         return query.not('labels_text', 'ilike', pattern);
       }
       return query.ilike('labels_text', pattern);
+    case 'bulk':
+      return query.eq('is_bulk', bulkValue(c.value));
     default:
       return query;
   }

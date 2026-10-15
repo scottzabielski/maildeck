@@ -4,6 +4,7 @@ import { useStore } from '../../store/index.ts';
 import { useAuth } from '../../hooks/useAuth.ts';
 import { useDeleteSweepRule, useToggleSweepRule } from '../../hooks/useSweepRules.ts';
 import { SweepSuggestionsScreen } from './SweepSuggestionsScreen.tsx';
+import { ClaudeBudgetSettings } from '../../components/ClaudeBudgetSettings.tsx';
 import type { SweepRule } from '../../types/index.ts';
 
 const useMockData = import.meta.env.VITE_USE_MOCK_DATA === 'true';
@@ -17,6 +18,7 @@ function formatRuleSummary(rule: SweepRule): string {
       const col = columns.find(col => col.id === c.value);
       return `Stream: "${col?.name || c.value}"`;
     }
+    if (c.field === 'bulk') return c.value === 'true' ? 'Bulk mail' : 'Not bulk mail';
     const fieldLabel = { from: 'From', to: 'To', subject: 'Subject', body: 'Body', label: 'Label' }[c.field] || c.field;
     return `${fieldLabel} ${c.op.replace('_', ' ')} "${c.value}"`;
   }).join(joiner);
@@ -77,6 +79,15 @@ export function SettingsSweepScreen() {
         </div>
       </div>
 
+      {!useMockData && (
+        <>
+          <div className="mobile-settings-header" style={{ marginTop: 16 }}>
+            <div className="mobile-settings-header-text">Claude checks</div>
+          </div>
+          <ClaudeBudgetSettings variant="mobile" />
+        </>
+      )}
+
       <div className="mobile-settings-header" style={{ marginTop: 16 }}>
         <div className="mobile-settings-header-text">Rules</div>
       </div>
@@ -106,6 +117,7 @@ export function SettingsSweepScreen() {
                     : rule.action}
                 </span>
                 {rule.delayHours > 0 && <span className="mobile-settings-tag">{rule.delayHours}h delay</span>}
+                {rule.aiCheck?.enabled && <span className="mobile-settings-tag claude">Claude check</span>}
               </div>
             </button>
             <div className="mobile-settings-row-actions">

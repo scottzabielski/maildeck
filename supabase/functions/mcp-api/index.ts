@@ -1,9 +1,9 @@
 import { createAdminClient } from '../_shared/supabase-admin.ts';
 import type { AdminClient } from '../_shared/sweepMatching.ts';
-import { ApiError, type Args, type Ctx, FILTER_SYNTAX_MESSAGE, isFilterSyntaxError, sha256Hex } from './common.ts';
-import { createRule, deleteRule, listRules, previewRule, updateRule } from './rules.ts';
+import { ApiError, type Args, type Ctx, FILTER_SYNTAX_MESSAGE, isFilterSyntaxError, isStatementTimeout, sha256Hex } from './common.ts';
+import { createRule, deleteRule, draftRule, listRules, previewRule, updateRule } from './rules.ts';
 import { createStream, deleteStream, listStreams, updateStream } from './streams.ts';
-import { exemptSweeps, listSweeps, status } from './sweeps.ts';
+import { exemptSweeps, listSweeps, resolveSweeps, status } from './sweeps.ts';
 
 /**
  * MailDeck API for the mail MCP server (the mail-mcp Cloudflare Worker).
@@ -25,8 +25,10 @@ const OPS = new Map<string, (ctx: Ctx, args: Args) => Promise<unknown>>([
   ['rules.create', createRule],
   ['rules.update', updateRule],
   ['rules.delete', deleteRule],
+  ['rules.draft', draftRule],
   ['sweeps.list', listSweeps],
   ['sweeps.exempt', exemptSweeps],
+  ['sweeps.resolve', resolveSweeps],
   ['streams.list', listStreams],
   ['streams.create', createStream],
   ['streams.update', updateStream],
@@ -84,6 +86,10 @@ Deno.serve(async (req) => {
     if (isFilterSyntaxError(err)) {
       console.log(`[mcp-api] ${op} 422 filter syntax ${Date.now() - started}ms`);
       return jsonResponse({ error: FILTER_SYNTAX_MESSAGE }, 422);
+    }
+    if (isStatementTimeout(err)) {
+      console.warn(`[mcp-api] ${op} 503 statement timeout ${Date.now() - started}ms`);
+      return jsonResponse({ error: "MailDeck's database timed out on that request (it may be busy syncing). Try again in a minute." }, 503);
     }
     console.error(`[mcp-api] ${op} failed:`, err);
     return jsonResponse({ error: 'Internal error' }, 500);

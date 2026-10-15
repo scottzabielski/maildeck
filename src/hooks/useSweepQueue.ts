@@ -9,6 +9,10 @@ export interface DbSweepQueueItem {
   scheduled_at: string;
   action: string;
   executed: boolean;
+  // Claude check (rules with one): null, or pending / match / unsure / failed
+  ai_status: 'pending' | 'match' | 'no_match' | 'unsure' | 'failed' | null;
+  ai_reason: string | null;
+  ai_error: string | null;
   // Joined email fields
   email?: {
     id: string;
@@ -38,6 +42,9 @@ export function useSweepQueue(userId: string | undefined) {
           scheduled_at,
           action,
           executed,
+          ai_status,
+          ai_reason,
+          ai_error,
           emails!inner (
             id,
             account_id,

@@ -1,8 +1,8 @@
 import { motion } from 'framer-motion';
 import { useStore } from '../store/index.ts';
-import { formatTime, formatCountdown, getCountdownClass } from '../lib/helpers.ts';
+import { formatTime, formatCountdown, getCountdownClass, claudeCheckLabel, isClaudeHeld } from '../lib/helpers.ts';
 import { Icons } from './ui/Icons.tsx';
-import type { Email, Account } from '../types/index.ts';
+import type { Email, Account, SweepCheck } from '../types/index.ts';
 
 const txtArea = typeof document !== 'undefined' ? document.createElement('textarea') : null;
 function decodeHTML(html: string): string {
@@ -22,11 +22,13 @@ interface EmailCardProps {
   multiSelectedIds: Set<string>;
   sweepSeconds?: number;
   sweepAction?: string;
-  matchedSweepRule?: { action: string; delayHours: number };
+  /** Set when the sweep belongs to a Claude-checked rule. */
+  sweepCheck?: SweepCheck;
+  matchedSweepRule?: { action: string; delayHours: number; claude?: boolean };
   matchedStreams?: Array<{ id: string; accent: string }>;
 }
 
-export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, selectedEmailId, highlightedEmailId, multiSelectedIds, sweepSeconds, sweepAction, matchedSweepRule, matchedStreams }: EmailCardProps) {
+export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, selectedEmailId, highlightedEmailId, multiSelectedIds, sweepSeconds, sweepAction, sweepCheck, matchedSweepRule, matchedStreams }: EmailCardProps) {
   const openContextMenu = useStore(s => s.openContextMenu);
   const selectEmail = useStore(s => s.selectEmail);
   const highlightEmail = useStore(s => s.highlightEmail);
@@ -69,10 +71,13 @@ export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, 
     selectEmail(email.id, columnId || email.columnId, sourceAccountId || email.accountId);
   };
 
-  // Compute effective sweep countdown: prefer queue value, fall back to rule-based calculation
-  let effectiveSweepSeconds = sweepSeconds;
+  // Compute effective sweep countdown: prefer queue value, fall back to rule-based calculation.
+  // A sweep held by a Claude check shows its state instead; a Claude-checked
+  // rule's match has no countdown until Claude has said match.
+  const held = !!sweepCheck && isClaudeHeld({ aiStatus: sweepCheck.status });
+  let effectiveSweepSeconds = held ? undefined : sweepSeconds;
   let effectiveSweepAction = sweepAction;
-  if (effectiveSweepSeconds == null && matchedSweepRule && !isExempted) {
+  if (effectiveSweepSeconds == null && !held && matchedSweepRule && !matchedSweepRule.claude && !isExempted) {
     const emailAgeSec = Math.floor((Date.now() - email.time) / 1000);
     const remaining = matchedSweepRule.delayHours * 3600 - emailAgeSec;
     if (remaining > 0) {
@@ -81,7 +86,7 @@ export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, 
     }
   }
   const hasSweep = effectiveSweepSeconds != null && effectiveSweepSeconds > 0;
-  const hasSweepRule = hasSweep || (!!matchedSweepRule && !isExempted);
+  const hasSweepRule = hasSweep || held || (!!matchedSweepRule && !isExempted);
 
   return (
     <motion.div
@@ -104,19 +109,31 @@ export function EmailCard({ email, accent, accounts, columnId, sourceAccountId, 
       </div>
       <div className="email-subject">{decodeHTML(email.subject)}</div>
       <div className="email-snippet">{decodeHTML(email.snippet)}</div>
+      {held && (
+        <div className="email-card-sweep-row">
+          <span className={`email-sweep-badge claude-${sweepCheck!.status}`} title={sweepCheck!.reason || undefined}>
+            <Icons.Sparkle />
+            {claudeCheckLabel(sweepCheck!.status)}
+          </span>
+        </div>
+      )}
       {hasSweep && (
         <div className="email-card-sweep-row">
-          <span className={`email-sweep-badge ${getCountdownClass(effectiveSweepSeconds!)}`}>
+          <span
+            className={`email-sweep-badge ${getCountdownClass(effectiveSweepSeconds!)}`}
+            title={sweepCheck?.status === 'match' ? `Claude: ${sweepCheck.reason}` : undefined}
+          >
             <Icons.Clock />
             {effectiveSweepAction === 'delete' ? 'Delete' : 'Archive'} in {formatCountdown(effectiveSweepSeconds!)}
           </span>
         </div>
       )}
-      {!hasSweep && matchedSweepRule && !isExempted && (
+      {!hasSweep && !held && matchedSweepRule && !isExempted && (
         <div className="email-card-sweep-row">
           <span className="email-sweep-badge rule-matched">
             <Icons.Sweep />
-            {matchedSweepRule.action === 'delete' || matchedSweepRule.action === 'keep_newest_delete' ? 'Delete' : 'Archive'} (sweep rule)
+            {matchedSweepRule.action === 'delete' || matchedSweepRule.action === 'keep_newest_delete' ? 'Delete' : 'Archive'}
+            {matchedSweepRule.claude ? ' if Claude agrees' : ' (sweep rule)'}
           </span>
         </div>
       )}

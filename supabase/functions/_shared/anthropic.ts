@@ -23,6 +23,7 @@ export async function callAnthropicJson<T>(opts: CallOptions): Promise<T> {
   if (!apiKey) {
     throw new AnthropicError(500, 'ANTHROPIC_API_KEY is not configured');
   }
+  const workspaceId = Deno.env.get('ANTHROPIC_WORKSPACE_ID');
 
   const body = {
     model: MODEL,
@@ -41,6 +42,8 @@ export async function callAnthropicJson<T>(opts: CallOptions): Promise<T> {
           'Content-Type': 'application/json',
           'x-api-key': apiKey,
           'anthropic-version': '2023-06-01',
+          // Needed when the key isn't tied to one workspace.
+          ...(workspaceId ? { 'anthropic-workspace-id': workspaceId } : {}),
         },
         body: JSON.stringify(body),
       });

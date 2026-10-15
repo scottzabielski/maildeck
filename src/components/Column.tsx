@@ -6,7 +6,7 @@ import { useStore } from '../store/index.ts';
 import { emailMatchesCriteria, beginCriteriaMatch, endCriteriaMatch } from '../lib/emailFilter.ts';
 import { scrollPositions } from '../lib/scrollPositions.ts';
 import { registerColumn, unregisterColumn } from '../lib/columnRegistry.ts';
-import type { Column as ColumnType } from '../types/index.ts';
+import type { Column as ColumnType, SweepCheck } from '../types/index.ts';
 
 interface ColumnProps {
   column: ColumnType;
@@ -26,15 +26,15 @@ export function Column({ column, dragControls, columnOrder = 0 }: ColumnProps) {
 
   // Match each displayed email against enabled sweep rules → { action, delayHours } for the soonest rule
   const sweepRuleMatchLookup = useMemo(() => {
-    const map = new Map<string, { action: string; delayHours: number }>();
+    const map = new Map<string, { action: string; delayHours: number; claude?: boolean }>();
     if (enabledSweepRules.length === 0) return map;
     beginCriteriaMatch();
     for (const email of emails) {
-      let bestRule: { action: string; delayHours: number } | null = null;
+      let bestRule: { action: string; delayHours: number; claude?: boolean } | null = null;
       for (const rule of enabledSweepRules) {
         if (emailMatchesCriteria(email, rule.criteria, rule.criteriaLogic)) {
           if (!bestRule || rule.delayHours < bestRule.delayHours) {
-            bestRule = { action: rule.action, delayHours: rule.delayHours };
+            bestRule = { action: rule.action, delayHours: rule.delayHours, claude: !!rule.aiCheck?.enabled };
           }
         }
       }
@@ -97,9 +97,9 @@ export function Column({ column, dragControls, columnOrder = 0 }: ColumnProps) {
 
   // Build a lookup from email ID → sweep countdown seconds
   const sweepLookup = useMemo(() => {
-    const map = new Map<string, { seconds: number; action: string }>();
+    const map = new Map<string, { seconds: number; action: string; check?: SweepCheck }>();
     for (const s of sweepEmails) {
-      map.set(s.id, { seconds: s.sweepSeconds, action: s.action || 'archive' });
+      map.set(s.id, { seconds: s.sweepSeconds, action: s.action || 'archive', ...(s.aiStatus ? { check: { status: s.aiStatus, reason: s.aiReason } } : {}) });
     }
     return map;
   }, [sweepEmails]);
@@ -173,6 +173,7 @@ export function Column({ column, dragControls, columnOrder = 0 }: ColumnProps) {
               multiSelectedIds={multiSelectedIds}
               sweepSeconds={sweepLookup.get(email.id)?.seconds}
               sweepAction={sweepLookup.get(email.id)?.action}
+              sweepCheck={sweepLookup.get(email.id)?.check}
               matchedSweepRule={sweepRuleMatchLookup.get(email.id)}
             />
           ))}

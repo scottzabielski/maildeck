@@ -22,6 +22,7 @@ export interface DbEmail {
   is_archived: boolean;
   is_deleted: boolean;
   labels: string[];
+  is_bulk: boolean | null;
 }
 
 /**
@@ -34,7 +35,7 @@ export function useEmails(userId: string | undefined) {
       if (!supabase || !userId) return [];
       let query = supabase
         .from('emails')
-        .select('id, user_id, account_id, provider_message_id, thread_id, sender_name, sender_email, recipients, subject, snippet, received_at, is_unread, is_starred, is_archived, is_deleted, labels')
+        .select('id, user_id, account_id, provider_message_id, thread_id, sender_name, sender_email, recipients, subject, snippet, received_at, is_unread, is_starred, is_archived, is_deleted, labels, is_bulk')
         .eq('user_id', userId)
         .eq('is_archived', false)
         .eq('is_deleted', false)

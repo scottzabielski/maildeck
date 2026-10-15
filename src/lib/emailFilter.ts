@@ -1,4 +1,4 @@
-import type { Criterion, Email, Column } from '../types/index.ts';
+import type { Criterion, Email, Column, SweepEmail } from '../types/index.ts';
 import { useStore } from '../store/index.ts';
 
 /**
@@ -10,7 +10,10 @@ import { useStore } from '../store/index.ts';
  *   - "subject" → email.subject
  *   - "label"   → email.labels (if available)
  *   - "snippet" → email.snippet
+ *   - "bulk"    → email.isBulk ("true"/"false"; an unknown flag matches neither)
  *   - "stream"  → evaluates referenced column's criteria recursively
+ *   - "sweep"   → whether a sweep rule applies ("has rule"/"no rule"), or a
+ *                 Claude check is holding its sweep ("needs review"/"check failed")
  *
  * Operations:
  *   - "contains" → case-insensitive substring match
@@ -21,7 +24,7 @@ import { useStore } from '../store/index.ts';
 
 // Cached references to avoid repeated useStore.getState() in hot loops
 let _cachedColumns: Column[] | null = null;
-let _cachedSweepIds: Set<string> | null = null;
+let _cachedSweeps: Map<string, SweepEmail> | null = null;
 let _cachedEnabledSweepRules: Array<{ criteria: Criterion[]; criteriaLogic: 'and' | 'or' }> | null = null;
 let _cachedExemptedIds: Set<string> | null = null;
 
@@ -30,11 +33,11 @@ function getColumns(): Column[] {
   return _cachedColumns;
 }
 
-function getSweepIds(): Set<string> {
-  if (!_cachedSweepIds) {
-    _cachedSweepIds = new Set(useStore.getState().sweepEmails.map(e => e.id));
+function getSweeps(): Map<string, SweepEmail> {
+  if (!_cachedSweeps) {
+    _cachedSweeps = new Map(useStore.getState().sweepEmails.map(e => [e.id, e]));
   }
-  return _cachedSweepIds;
+  return _cachedSweeps;
 }
 
 function getEnabledSweepRules(): Array<{ criteria: Criterion[]; criteriaLogic: 'and' | 'or' }> {
@@ -58,7 +61,7 @@ function getExemptedIds(): Set<string> {
 export function beginCriteriaMatch() {
   const s = useStore.getState();
   _cachedColumns = s.columns;
-  _cachedSweepIds = new Set(s.sweepEmails.map(e => e.id));
+  _cachedSweeps = new Map(s.sweepEmails.map(e => [e.id, e]));
   _cachedEnabledSweepRules = s.sweepRules
     .filter(r => r.enabled)
     .map(r => ({ criteria: r.criteria, criteriaLogic: r.criteriaLogic }));
@@ -66,7 +69,7 @@ export function beginCriteriaMatch() {
 }
 export function endCriteriaMatch() {
   _cachedColumns = null;
-  _cachedSweepIds = null;
+  _cachedSweeps = null;
   _cachedEnabledSweepRules = null;
   _cachedExemptedIds = null;
 }
@@ -130,6 +133,9 @@ function matchSingleCriterion(
       return matchOp(email.snippet.toLowerCase(), op, v);
     case 'body':
       return matchOp(email.snippet.toLowerCase(), op, v);
+    case 'bulk':
+      if (email.isBulk === null || email.isBulk === undefined) return false;
+      return email.isBulk === (v === 'true' || v === 'yes');
     case 'stream': {
       const cols = getColumns();
       const target = cols.find(c => c.id === value || c.name.toLowerCase() === v);
@@ -140,6 +146,10 @@ function matchSingleCriterion(
       return emailMatchesCriteriaInternal(email, target.criteria, target.criteriaLogic, visited);
     }
     case 'sweep': {
+      // 'needs review' / 'check failed': a Claude check is holding the sweep
+      // (Claude was unsure, or couldn't check it).
+      if (v === 'needs review') return getSweeps().get(email.id)?.aiStatus === 'unsure';
+      if (v === 'check failed') return getSweeps().get(email.id)?.aiStatus === 'failed';
       // value is 'no rule' | 'has rule' (case-insensitive).
       // "has rule" = the email would be (or is) acted on by an enabled sweep
       // rule. Specifically: it's currently in sweep_queue OR it matches an
@@ -148,7 +158,7 @@ function matchSingleCriterion(
       const exempt = getExemptedIds().has(email.id);
       let hasRule = false;
       if (!exempt) {
-        if (getSweepIds().has(email.id)) {
+        if (getSweeps().has(email.id)) {
           hasRule = true;
         } else {
           for (const r of getEnabledSweepRules()) {

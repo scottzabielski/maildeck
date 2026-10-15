@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { SweepCard } from './SweepCard.tsx';
 import { useStore } from '../store/index.ts';
+import { isClaudeHeld } from '../lib/helpers.ts';
 
 interface SweepColumnProps {
   columnCount?: number;
@@ -11,8 +12,12 @@ export function SweepColumn({ columnCount = 0 }: SweepColumnProps) {
   const sweepEmails = useStore(s => s.sweepEmails);
   const disabledAccountIds = useStore(s => s.disabledAccountIds);
   const _viewSwitchKey = useStore(s => s._viewSwitchKey);
+  // Sweeps held by a Claude check go after the ones counting down.
   const filtered = useMemo(
-    () => sweepEmails.filter(e => !disabledAccountIds.has(e.accountId)),
+    () => {
+      const shown = sweepEmails.filter(e => !disabledAccountIds.has(e.accountId));
+      return [...shown.filter(e => !isClaudeHeld(e)), ...shown.filter(e => isClaudeHeld(e))];
+    },
     [sweepEmails, disabledAccountIds]
   );
 

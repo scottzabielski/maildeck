@@ -1,5 +1,6 @@
 import { createAdminClient } from '../_shared/supabase-admin.ts';
 import { corsHeaders } from '../_shared/cors.ts';
+import { type Header, isBulkMail } from '../_shared/emailContent.ts';
 
 /**
  * Email sync Edge Function.
@@ -292,7 +293,7 @@ async function gmailFullSync(
     const batch = remainingIds.slice(i, i + batchSize);
     const messages = await Promise.all(
       batch.map(async (id) => {
-        const res = await gmailFetch(accessToken, `/messages/${id}?format=METADATA&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject`);
+        const res = await gmailFetch(accessToken, `/messages/${id}?${GMAIL_METADATA}`);
         return res.json();
       }),
     );
@@ -367,7 +368,7 @@ async function gmailIncrementalSync(
     const batch = uniqueAdded.slice(i, i + GMAIL_CONCURRENCY);
     const messages = await Promise.all(
       batch.map(async (id) => {
-        const res = await gmailFetch(accessToken, `/messages/${id}?format=METADATA&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject`);
+        const res = await gmailFetch(accessToken, `/messages/${id}?${GMAIL_METADATA}`);
         return res.json();
       }),
     );
@@ -427,10 +428,15 @@ function gmailMessageToRow(
     is_deleted: labelIds.includes('TRASH'),
     labels: JSON.stringify(labelIds),
     recipients: JSON.stringify([{ email: getHeader('To') }]),
+    is_bulk: isBulkMail(headers),
   };
 }
 
 const GMAIL_CONCURRENCY = 5;
+
+// From, To and Subject fill the row; the list headers mark bulk mail.
+const GMAIL_METADATA = ['From', 'To', 'Subject', 'List-Unsubscribe', 'List-Id', 'Precedence']
+  .reduce((q, h) => `${q}&metadataHeaders=${h}`, 'format=METADATA');
 
 async function gmailFetch(accessToken: string, path: string): Promise<Response> {
   // Gmail rate-limits per mailbox; back off briefly (1s, then 3s) on 429/5xx.
@@ -471,7 +477,7 @@ async function outlookFullSync(
   const inboxFolderId = await resolveOutlookInboxFolderId(accessToken);
 
   let synced = 0;
-  let url: string | null = `https://graph.microsoft.com/v1.0/me/mailFolders/Inbox/messages?$top=100&$orderby=receivedDateTime desc&$select=id,conversationId,from,toRecipients,subject,bodyPreview,receivedDateTime,isRead,flag,categories,parentFolderId`;
+  let url: string | null = `https://graph.microsoft.com/v1.0/me/mailFolders/Inbox/messages?$top=100&$orderby=receivedDateTime desc&$select=${OUTLOOK_FIELDS},internetMessageHeaders`;
   let timedOut = false;
   const inboxIds = new Set<string>();
 
@@ -490,9 +496,7 @@ async function outlookFullSync(
       const rows = data.value.map((msg: Record<string, unknown>) =>
         outlookMessageToRow(msg, userId, accountId, inboxFolderId),
       );
-      const { error } = await supabase
-        .from('emails')
-        .upsert(rows, { onConflict: 'account_id,provider_message_id' });
+      const error = await upsertEmailRows(supabase, rows);
 
       if (error) console.error('Upsert batch error:', error);
       synced += rows.length;
@@ -503,7 +507,9 @@ async function outlookFullSync(
 
   // Only get deltaLink when all messages have been fetched (no timeout)
   if (!timedOut) {
-    const deltaUrl = `https://graph.microsoft.com/v1.0/me/mailFolders/Inbox/messages/delta?$select=id,conversationId,from,toRecipients,subject,bodyPreview,receivedDateTime,isRead,flag,categories,parentFolderId`;
+    // The delta link keeps this $select for good, so it stays as it was; new
+    // messages from incremental syncs get their headers from outlookBulkFlags.
+    const deltaUrl = `https://graph.microsoft.com/v1.0/me/mailFolders/Inbox/messages/delta?$select=${OUTLOOK_FIELDS}`;
     let deltaLink: string | null = null;
     let deltaNextUrl: string | null = deltaUrl;
 
@@ -559,12 +565,12 @@ async function outlookIncrementalSync(
       const removed = data.value.filter((msg: Record<string, unknown>) => msg['@removed']);
 
       if (added.length > 0) {
+        const bulk = await outlookBulkFlags(supabase, accountId, accessToken,
+          added.map((msg: Record<string, unknown>) => msg.id as string));
         const rows = added.map((msg: Record<string, unknown>) =>
-          outlookMessageToRow(msg, userId, accountId, inboxFolderId),
+          outlookMessageToRow(msg, userId, accountId, inboxFolderId, bulk.get(msg.id as string)),
         );
-        await supabase
-          .from('emails')
-          .upsert(rows, { onConflict: 'account_id,provider_message_id' });
+        await upsertEmailRows(supabase, rows);
         synced += rows.length;
       }
 
@@ -593,12 +599,19 @@ async function outlookIncrementalSync(
   return synced;
 }
 
+/**
+ * The bulk flag comes from the message's headers when it was fetched with
+ * them, or from `bulk` (outlookBulkFlags); otherwise the row leaves it alone.
+ */
 function outlookMessageToRow(
   msg: Record<string, unknown>,
   userId: string,
   accountId: string,
   inboxFolderId: string,
+  bulk?: boolean,
 ) {
+  const headers = msg.internetMessageHeaders as Header[] | undefined;
+  const isBulk = bulk ?? (Array.isArray(headers) ? isBulkMail(headers) : undefined);
   const from = msg.from as { emailAddress: { name: string; address: string } } | undefined;
   const toRecipients = msg.toRecipients as Array<{ emailAddress: { name: string; address: string } }> | undefined;
   const flag = msg.flag as { flagStatus: string } | undefined;
@@ -628,7 +641,81 @@ function outlookMessageToRow(
         email: r.emailAddress.address,
       })),
     ),
+    ...(isBulk !== undefined ? { is_bulk: isBulk } : {}),
   };
+}
+
+const OUTLOOK_FIELDS = 'id,conversationId,from,toRecipients,subject,bodyPreview,receivedDateTime,isRead,flag,categories,parentFolderId';
+
+/**
+ * Upserts email rows. Rows without a known bulk flag go in their own batch:
+ * in a shared one PostgREST would write null over a flag already stored.
+ */
+async function upsertEmailRows(
+  supabase: ReturnType<typeof createAdminClient>,
+  rows: Record<string, unknown>[],
+) {
+  for (const batch of [rows.filter((r) => 'is_bulk' in r), rows.filter((r) => !('is_bulk' in r))]) {
+    if (batch.length === 0) continue;
+    const { error } = await supabase.from('emails').upsert(batch, { onConflict: 'account_id,provider_message_id' });
+    if (error) return error;
+  }
+  return null;
+}
+
+/**
+ * Bulk flags for messages a delta sync reports, read from their headers
+ * (20 per Graph batch request). Only for messages not stored yet: the
+ * insert trigger matches rules as the row is created, so a "bulk" condition
+ * needs the flag then. Best effort: a message whose headers can't be read
+ * gets no flag.
+ */
+async function outlookBulkFlags(
+  supabase: ReturnType<typeof createAdminClient>,
+  accountId: string,
+  accessToken: string,
+  ids: string[],
+): Promise<Map<string, boolean>> {
+  const flags = new Map<string, boolean>();
+  try {
+    const known = new Set<string>();
+    for (let i = 0; i < ids.length; i += OUTLOOK_ID_CHUNK) {
+      const { data, error } = await supabase
+        .from('emails')
+        .select('provider_message_id')
+        .eq('account_id', accountId)
+        .in('provider_message_id', ids.slice(i, i + OUTLOOK_ID_CHUNK));
+      if (error) throw error;
+      for (const r of data ?? []) known.add(r.provider_message_id as string);
+    }
+    const fresh = ids.filter((id) => !known.has(id));
+    for (let i = 0; i < fresh.length; i += 20) {
+      const chunk = fresh.slice(i, i + 20);
+      const res = await fetch('https://graph.microsoft.com/v1.0/$batch', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requests: chunk.map((id, n) => ({
+            id: String(n),
+            method: 'GET',
+            url: `/me/messages/${encodeURIComponent(id)}?$select=internetMessageHeaders`,
+          })),
+        }),
+      });
+      if (!res.ok) {
+        console.warn(`Outlook bulk flags: batch failed (${res.status}) for ${accountId}`);
+        continue;
+      }
+      const data = await res.json() as { responses?: { id: string; status: number; body?: { internetMessageHeaders?: Header[] } }[] };
+      for (const r of data.responses ?? []) {
+        const headers = r.body?.internetMessageHeaders;
+        if (r.status === 200 && Array.isArray(headers)) flags.set(chunk[Number(r.id)], isBulkMail(headers));
+      }
+    }
+  } catch (err) {
+    console.warn(`Outlook bulk flags failed for ${accountId}:`, (err as Error).message);
+  }
+  return flags;
 }
 
 // Outlook ids are ~152 characters, so 50 per `in.(...)` filter keeps the URL
@@ -745,11 +832,11 @@ async function outlookReconcile(
     for (let i = 0; i < fetchNow.length; i += 5) {
       const msgs = await Promise.all(fetchNow.slice(i, i + 5).map(async (id) => {
         const res = await outlookFetch(accessToken,
-          `https://graph.microsoft.com/v1.0/me/messages/${encodeURIComponent(id)}?$select=id,conversationId,from,toRecipients,subject,bodyPreview,receivedDateTime,isRead,flag,categories,parentFolderId`);
+          `https://graph.microsoft.com/v1.0/me/messages/${encodeURIComponent(id)}?$select=${OUTLOOK_FIELDS},internetMessageHeaders`);
         return res.json();
       }));
       const rows = msgs.map((msg) => outlookMessageToRow(msg, account.user_id as string, accountId, inboxFolderId));
-      const { error } = await supabase.from('emails').upsert(rows, { onConflict: 'account_id,provider_message_id' });
+      const error = await upsertEmailRows(supabase, rows);
       if (error) throw error;
       added += rows.length;
     }

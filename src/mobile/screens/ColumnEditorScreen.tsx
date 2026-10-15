@@ -60,6 +60,8 @@ export function ColumnEditorScreen() {
       if (idx !== i) return r;
       if (key === 'field' && val === 'stream') return { ...r, field: val, op: 'equals', value: '' };
       if (key === 'field' && val === 'sweep') return { ...r, field: val, op: 'equals', value: 'no rule' };
+      if (key === 'field' && val === 'bulk') return { ...r, field: val, op: 'equals', value: 'true' };
+      if (key === 'field' && (r.field === 'bulk' || r.field === 'sweep')) return { ...r, field: val, op: 'contains', value: '' };
       return { ...r, [key]: val };
     }));
   };
@@ -150,6 +152,7 @@ export function ColumnEditorScreen() {
                   <option value="subject">Subject</option>
                   <option value="label">Label</option>
                   <option value="body">Body</option>
+                  <option value="bulk">Bulk mail</option>
                   <option value="stream">Stream</option>
                   <option value="sweep">Sweep</option>
                 </select>
@@ -157,9 +160,9 @@ export function ColumnEditorScreen() {
                   <span className="mobile-editor-select" style={{ fontStyle: 'italic', color: 'var(--text-tertiary)' }}>
                     is part of
                   </span>
-                ) : row.field === 'sweep' ? (
+                ) : row.field === 'sweep' || row.field === 'bulk' ? (
                   <span className="mobile-editor-select" style={{ fontStyle: 'italic', color: 'var(--text-tertiary)' }}>
-                    has
+                    {row.field === 'sweep' ? 'has' : 'is'}
                   </span>
                 ) : (
                   <select
@@ -193,6 +196,17 @@ export function ColumnEditorScreen() {
                   >
                     <option value="no rule">no rule</option>
                     <option value="has rule">has rule</option>
+                    <option value="needs review">needs review (Claude unsure)</option>
+                    <option value="check failed">Claude check failed</option>
+                  </select>
+                ) : row.field === 'bulk' ? (
+                  <select
+                    className="mobile-editor-input"
+                    value={row.value}
+                    onChange={(e) => updateRow(i, 'value', e.target.value)}
+                  >
+                    <option value="true">yes (mailing list)</option>
+                    <option value="false">no</option>
                   </select>
                 ) : (
                   <input

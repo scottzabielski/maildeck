@@ -14,6 +14,9 @@ import { corsHeaders } from '../_shared/cors.ts';
  * Outlook messages are checked first and left alone unless they are still
  * in the inbox, so a sweep never pulls a message out of a folder it was
  * filed in (or out of Deleted Items).
+ *
+ * Sweeps queued by a Claude-checked rule wait for sweep-check's verdict:
+ * only rows without a check, or whose check said match, are run here.
  */
 
 const RETRY_DELAY_MS = 10 * 60_000;
@@ -51,6 +54,8 @@ Deno.serve(async (req) => {
         )
       `)
       .eq('executed', false)
+      // A Claude-checked rule's sweep runs only once Claude said match.
+      .or('ai_status.is.null,ai_status.eq.match')
       .lte('scheduled_at', new Date().toISOString())
       .order('scheduled_at', { ascending: true })
       .limit(100);
