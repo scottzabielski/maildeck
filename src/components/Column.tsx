@@ -1,12 +1,14 @@
-import { useMemo, useCallback, useRef, useLayoutEffect, useEffect } from 'react';
+import { memo, useMemo, useCallback, useRef, useLayoutEffect, useEffect } from 'react';
 import { motion, AnimatePresence, type DragControls } from 'framer-motion';
+import { useShallow } from 'zustand/react/shallow';
 import { Icons } from './ui/Icons.tsx';
 import { EmailCard } from './EmailCard.tsx';
 import { useStore } from '../store/index.ts';
-import { emailMatchesCriteria, beginCriteriaMatch, endCriteriaMatch } from '../lib/emailFilter.ts';
+import { useRenderWindow } from '../hooks/useRenderWindow.ts';
+import { emailMatchesSearch, inStream, sweepRuleMatch, sweepsById } from '../lib/emailFilter.ts';
 import { scrollPositions } from '../lib/scrollPositions.ts';
 import { registerColumn, unregisterColumn } from '../lib/columnRegistry.ts';
-import type { Column as ColumnType, SweepCheck } from '../types/index.ts';
+import type { Column as ColumnType } from '../types/index.ts';
 
 interface ColumnProps {
   column: ColumnType;
@@ -14,75 +16,48 @@ interface ColumnProps {
   columnOrder?: number;
 }
 
-export function Column({ column, dragControls, columnOrder = 0 }: ColumnProps) {
-  const { emails, accounts, disabledAccountIds, openColumnContextMenu, selectedEmail, highlightedEmail, multiSelectedIds, sweepEmails, sweepRules, exemptedEmailIds, searchQuery, globalFilters, _fetchNextPage, _hasNextPage, _isFetchingNextPage, _viewSwitchKey } = useStore();
-  const selectedEmailId = selectedEmail ? selectedEmail.emailId : null;
-  const highlightedEmailId = highlightedEmail ? highlightedEmail.emailId : null;
+export const Column = memo(function Column({ column, dragControls, columnOrder = 0 }: ColumnProps) {
+  const { emails, columns, disabledAccountIds, sweepEmails, sweepRules, exemptedEmailIds, searchQuery, globalFilters, _fetchNextPage, _hasNextPage, _isFetchingNextPage, _viewSwitchKey } = useStore(useShallow(s => ({
+    emails: s.emails,
+    columns: s.columns,
+    disabledAccountIds: s.disabledAccountIds,
+    sweepEmails: s.sweepEmails,
+    sweepRules: s.sweepRules,
+    exemptedEmailIds: s.exemptedEmailIds,
+    searchQuery: s.searchQuery,
+    globalFilters: s.globalFilters,
+    _fetchNextPage: s._fetchNextPage,
+    _hasNextPage: s._hasNextPage,
+    _isFetchingNextPage: s._isFetchingNextPage,
+    _viewSwitchKey: s._viewSwitchKey,
+  })));
+  const openColumnContextMenu = useStore(s => s.openColumnContextMenu);
+  // The keyboard highlight when it's in this column: arrow keys can move it past the cards drawn so far.
+  const highlightedId = useStore(s => s.highlightedEmail?.columnId === column.id ? s.highlightedEmail.emailId : null);
 
-  const enabledSweepRules = useMemo(
-    () => sweepRules.filter(r => r.enabled),
-    [sweepRules]
-  );
+  // columns, sweepEmails, sweepRules and exemptedEmailIds are in the dep list
+  // because a stream column may use the "stream" or "sweep" criterion fields,
+  // which read the other streams, the sweep queue, the active rules and the
+  // exemption set. Without them, the column wouldn't re-filter when any of those change.
+  const columnEmails = useMemo(() => emails.filter(e => {
+    if (disabledAccountIds.has(e.accountId)) return false;
+    if (e.columnId) return e.columnId === column.id;
+    return column.criteria.length > 0 && inStream(e, column);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [emails, column, disabledAccountIds, columns, sweepEmails, sweepRules, exemptedEmailIds]);
 
-  // Match each displayed email against enabled sweep rules → { action, delayHours } for the soonest rule
-  const sweepRuleMatchLookup = useMemo(() => {
-    const map = new Map<string, { action: string; delayHours: number; claude?: boolean }>();
-    if (enabledSweepRules.length === 0) return map;
-    beginCriteriaMatch();
-    for (const email of emails) {
-      let bestRule: { action: string; delayHours: number; claude?: boolean } | null = null;
-      for (const rule of enabledSweepRules) {
-        if (emailMatchesCriteria(email, rule.criteria, rule.criteriaLogic)) {
-          if (!bestRule || rule.delayHours < bestRule.delayHours) {
-            bestRule = { action: rule.action, delayHours: rule.delayHours, claude: !!rule.aiCheck?.enabled };
-          }
-        }
-      }
-      if (bestRule) map.set(email.id, bestRule);
-    }
-    endCriteriaMatch();
-    return map;
-  }, [emails, enabledSweepRules]);
-
-  // sweepEmails, enabledSweepRules and exemptedEmailIds are in the dep list
-  // because a stream column may use the "sweep" criterion field, which reads
-  // from the sweep queue, the active rules and the exemption set. Without
-  // them, the column wouldn't re-filter when any of those change.
-  const columnEmails = useMemo(() => {
-    beginCriteriaMatch();
-    const result = emails.filter(e => {
-      if (disabledAccountIds.has(e.accountId)) return false;
-      if (e.columnId) return e.columnId === column.id;
-      if (column.criteria.length > 0) return emailMatchesCriteria(e, column.criteria, column.criteriaLogic);
-      return false;
-    });
-    endCriteriaMatch();
-    return result;
-  }, [emails, column.id, column.criteria, column.criteriaLogic, disabledAccountIds, sweepEmails, enabledSweepRules, exemptedEmailIds]);
-
+  // The "no-sweep" filter reads the rules (and any streams they name).
   const displayEmails = useMemo(() => {
     let filtered = columnEmails;
     const q = searchQuery.toLowerCase();
-    if (q) {
-      filtered = filtered.filter(e =>
-        e.sender.toLowerCase().includes(q)
-        || (e.senderEmail || '').toLowerCase().includes(q)
-        || e.subject.toLowerCase().includes(q)
-        || e.snippet.toLowerCase().includes(q)
-      );
-    }
-    if (globalFilters.has('no-sweep')) {
-      beginCriteriaMatch();
-      filtered = filtered.filter(e =>
-        !enabledSweepRules.some(rule => emailMatchesCriteria(e, rule.criteria, rule.criteriaLogic))
-      );
-      endCriteriaMatch();
-    }
+    if (q) filtered = filtered.filter(e => emailMatchesSearch(e, q));
+    if (globalFilters.has('no-sweep')) filtered = filtered.filter(e => !sweepRuleMatch(e));
     if (globalFilters.has('unread')) filtered = filtered.filter(e => e.unread);
     if (globalFilters.has('read')) filtered = filtered.filter(e => !e.unread);
     if (globalFilters.has('starred')) filtered = filtered.filter(e => e.starred);
     return filtered;
-  }, [columnEmails, searchQuery, globalFilters, enabledSweepRules]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [columnEmails, searchQuery, globalFilters, sweepRules, columns]);
 
   // Register column in the column registry for keyboard navigation
   useEffect(() => {
@@ -95,15 +70,13 @@ export function Column({ column, dragControls, columnOrder = 0 }: ColumnProps) {
     return () => unregisterColumn(column.id);
   }, [displayEmails, column.id, columnOrder]);
 
-  // Build a lookup from email ID → sweep countdown seconds
-  const sweepLookup = useMemo(() => {
-    const map = new Map<string, { seconds: number; action: string; check?: SweepCheck }>();
-    for (const s of sweepEmails) {
-      map.set(s.id, { seconds: s.sweepSeconds, action: s.action || 'archive', ...(s.aiStatus ? { check: { status: s.aiStatus, reason: s.aiReason } } : {}) });
-    }
-    return map;
-  }, [sweepEmails]);
-  const unreadCount = columnEmails.filter(e => e.unread).length;
+  const sweeps = sweepsById(sweepEmails);
+  const unreadCount = useMemo(() => columnEmails.filter(e => e.unread).length, [columnEmails]);
+  const highlightIndex = useMemo(
+    () => (highlightedId ? displayEmails.findIndex(e => e.id === highlightedId) : -1),
+    [displayEmails, highlightedId]
+  );
+  const { shown, hasMore, grow } = useRenderWindow(column.id, displayEmails.length, highlightIndex);
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -114,30 +87,31 @@ export function Column({ column, dragControls, columnOrder = 0 }: ColumnProps) {
     }
   }, [column.id]);
 
-  // Auto-fetch more pages if the column isn't scrollable.
+  // When the column isn't scrollable, draw more of the loaded emails, then fetch more pages.
   // Skip when a filter is active, search is active, or column is empty (no matches won't improve with older pages).
   useEffect(() => {
     const el = scrollRef.current;
-    if (!el || !_hasNextPage || !_fetchNextPage || globalFilters.size > 0 || searchQuery || displayEmails.length === 0) return;
+    if (!el || globalFilters.size > 0 || searchQuery || displayEmails.length === 0) return;
+    if (!hasMore && (!_hasNextPage || !_fetchNextPage)) return;
     const check = () => {
-      if (_isFetchingNextPage) return;
       const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 200;
-      if (el.scrollHeight <= el.clientHeight + 10 || atBottom) {
-        _fetchNextPage();
-      }
+      if (el.scrollHeight > el.clientHeight + 10 && !atBottom) return;
+      if (hasMore) grow();
+      else if (!_isFetchingNextPage) _fetchNextPage?.();
     };
     check();
     const id = setInterval(check, 300);
     return () => clearInterval(id);
-  }, [_hasNextPage, _isFetchingNextPage, _fetchNextPage, globalFilters, searchQuery, displayEmails.length]);
+  }, [_hasNextPage, _isFetchingNextPage, _fetchNextPage, globalFilters, searchQuery, displayEmails.length, hasMore, grow]);
 
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
     scrollPositions.set(column.id, el.scrollTop);
-    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 200) {
-      if (_hasNextPage && !_isFetchingNextPage) _fetchNextPage?.();
-    }
-  }, [column.id, _fetchNextPage, _hasNextPage, _isFetchingNextPage]);
+    const fromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    // Draw more cards a screen early so scrolling never reaches the end of what's drawn.
+    if (hasMore && fromBottom <= el.clientHeight) grow();
+    else if (!hasMore && fromBottom <= 200 && _hasNextPage && !_isFetchingNextPage) _fetchNextPage?.();
+  }, [column.id, _fetchNextPage, _hasNextPage, _isFetchingNextPage, hasMore, grow]);
 
   return (
     <motion.div
@@ -161,20 +135,14 @@ export function Column({ column, dragControls, columnOrder = 0 }: ColumnProps) {
       </div>
       <div className="column-emails" ref={scrollRef} onScroll={handleScroll}>
         <AnimatePresence initial={false}>
-          {displayEmails.map(email => (
+          {displayEmails.slice(0, shown).map(email => (
             <EmailCard
               key={email.id}
               email={email}
               accent={column.accent}
-              accounts={accounts}
               columnId={column.id}
-              selectedEmailId={selectedEmailId}
-              highlightedEmailId={highlightedEmailId}
-              multiSelectedIds={multiSelectedIds}
-              sweepSeconds={sweepLookup.get(email.id)?.seconds}
-              sweepAction={sweepLookup.get(email.id)?.action}
-              sweepCheck={sweepLookup.get(email.id)?.check}
-              matchedSweepRule={sweepRuleMatchLookup.get(email.id)}
+              sweep={sweeps.get(email.id)}
+              matchedSweepRule={sweepRuleMatch(email) ?? undefined}
             />
           ))}
         </AnimatePresence>
@@ -182,4 +150,4 @@ export function Column({ column, dragControls, columnOrder = 0 }: ColumnProps) {
       </div>
     </motion.div>
   );
-}
+});

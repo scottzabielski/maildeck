@@ -49,15 +49,13 @@ export type Email = {
 /** A Claude-checked sweep's state: waiting, cleared to sweep, unsure (held for review), or failed. */
 export type ClaudeCheckStatus = 'pending' | 'match' | 'unsure' | 'failed';
 
-/** What a card shows about a sweep's Claude check. */
-export type SweepCheck = { status: ClaudeCheckStatus; reason?: string | null };
-
 export type SweepEmail = {
   id: string;
   accountId: string;
   sender: string;
   subject: string;
-  sweepSeconds: number;
+  /** When the sweep runs (epoch ms). */
+  dueAt: number;
   exempted: boolean;
   action?: string;
   expiring?: boolean;

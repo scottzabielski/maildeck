@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Icons } from './ui/Icons.tsx';
 import type { Criterion, Suggestion, SweepRule } from '../types/index.ts';
-import { emailMatchesCriteria, beginCriteriaMatch, endCriteriaMatch } from '../lib/emailFilter.ts';
+import { emailMatchesCriteria } from '../lib/emailFilter.ts';
 import { useStore } from '../store/index.ts';
 
 interface Props {
@@ -31,35 +31,30 @@ export function SuggestionCard({ suggestion, rulesById, busy, onApply, onDismiss
     if (!['merge', 'absorb', 'redundant'].includes(suggestion.kind)) return null;
     if (!suggestion.proposedRule && suggestion.kind !== 'redundant') return null;
 
-    beginCriteriaMatch();
-    try {
-      // Current matches: union of all involved rules' matches.
-      const currentMatches = new Set<string>();
-      for (const r of involved) {
-        for (const e of emails) {
-          if (emailMatchesCriteria(e, r.criteria, r.criteriaLogic)) currentMatches.add(e.id);
-        }
+    // Current matches: union of all involved rules' matches.
+    const currentMatches = new Set<string>();
+    for (const r of involved) {
+      for (const e of emails) {
+        if (emailMatchesCriteria(e, r.criteria, r.criteriaLogic)) currentMatches.add(e.id);
       }
-
-      let proposedCount = 0;
-      if (suggestion.kind === 'redundant' && suggestion.keepRuleId) {
-        const keeper = rulesById.get(suggestion.keepRuleId);
-        if (keeper) {
-          for (const e of emails) {
-            if (emailMatchesCriteria(e, keeper.criteria, keeper.criteriaLogic)) proposedCount++;
-          }
-        }
-      } else if (suggestion.proposedRule?.criteria) {
-        const c = suggestion.proposedRule.criteria;
-        const logic = suggestion.proposedRule.criteriaLogic ?? 'or';
-        for (const e of emails) {
-          if (emailMatchesCriteria(e, c, logic)) proposedCount++;
-        }
-      }
-      return { current: currentMatches.size, proposed: proposedCount };
-    } finally {
-      endCriteriaMatch();
     }
+
+    let proposedCount = 0;
+    if (suggestion.kind === 'redundant' && suggestion.keepRuleId) {
+      const keeper = rulesById.get(suggestion.keepRuleId);
+      if (keeper) {
+        for (const e of emails) {
+          if (emailMatchesCriteria(e, keeper.criteria, keeper.criteriaLogic)) proposedCount++;
+        }
+      }
+    } else if (suggestion.proposedRule?.criteria) {
+      const c = suggestion.proposedRule.criteria;
+      const logic = suggestion.proposedRule.criteriaLogic ?? 'or';
+      for (const e of emails) {
+        if (emailMatchesCriteria(e, c, logic)) proposedCount++;
+      }
+    }
+    return { current: currentMatches.size, proposed: proposedCount };
   }, [suggestion, involved, emails, rulesById]);
 
   const isConflict = suggestion.kind === 'conflict';

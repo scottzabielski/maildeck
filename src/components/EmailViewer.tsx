@@ -1,13 +1,26 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
+import { useShallow } from 'zustand/react/shallow';
 import { Icons } from './ui/Icons.tsx';
+import { Countdown } from './ui/Countdown.tsx';
 import { useStore } from '../store/index.ts';
 import { useEmailBody } from '../hooks/useEmailBody.ts';
 import { formatCountdown, getCountdownClass } from '../lib/helpers.ts';
 import { buildEmailIframeDoc } from '../lib/emailIframe.ts';
 
 export function EmailViewer() {
-  const { selectedEmail, emails, accounts, sweepEmails, deselectEmail, toggleStar, toggleRead, archiveEmail, deleteEmail, openSweepRuleEditor } = useStore();
+  const { selectedEmail, emails, accounts, sweepEmails, deselectEmail, toggleStar, toggleRead, archiveEmail, deleteEmail, openSweepRuleEditor } = useStore(useShallow(s => ({
+    selectedEmail: s.selectedEmail,
+    emails: s.emails,
+    accounts: s.accounts,
+    sweepEmails: s.sweepEmails,
+    deselectEmail: s.deselectEmail,
+    toggleStar: s.toggleStar,
+    toggleRead: s.toggleRead,
+    archiveEmail: s.archiveEmail,
+    deleteEmail: s.deleteEmail,
+    openSweepRuleEditor: s.openSweepRuleEditor,
+  })));
   const [copied, setCopied] = useState(false);
   const [showSenderEmail, setShowSenderEmail] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -64,7 +77,6 @@ export function EmailViewer() {
   const avatarLetter = email.sender.charAt(0).toUpperCase();
   const avatarBg = account ? account.color : 'var(--blue)';
   const sweepItem = sweepEmails.find(s => s.id === email.id);
-  const hasSweep = sweepItem && sweepItem.sweepSeconds > 0;
 
   const hasHtml = body?.body_html;
   const hasText = body?.body_text;
@@ -162,11 +174,15 @@ export function EmailViewer() {
               <span className="email-viewer-to"> to {email.toEmail || account?.email || 'me'}</span>
             </div>
           </div>
-          {hasSweep && (
-            <span className={`email-viewer-sweep-badge ${getCountdownClass(sweepItem.sweepSeconds)}`}>
-              <Icons.Clock />
-              {sweepItem.action === 'delete' ? 'Delete' : 'Archive'} in {formatCountdown(sweepItem.sweepSeconds)}
-            </span>
+          {sweepItem && (
+            <Countdown dueAt={sweepItem.dueAt}>
+              {seconds => seconds > 0 && (
+                <span className={`email-viewer-sweep-badge ${getCountdownClass(seconds)}`}>
+                  <Icons.Clock />
+                  {sweepItem.action === 'delete' ? 'Delete' : 'Archive'} in {formatCountdown(seconds)}
+                </span>
+              )}
+            </Countdown>
           )}
         </div>
       </div>

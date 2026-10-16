@@ -1,15 +1,20 @@
-import { useState, useRef, useCallback } from 'react';
+import { memo, useState, useRef, useCallback, useMemo } from 'react';
 import { Icons } from '../../components/ui/Icons.tsx';
+import { Countdown } from '../../components/ui/Countdown.tsx';
 import { useStore } from '../../store/index.ts';
 import { formatTime, formatCountdown, getCountdownClass, claudeCheckLabel, isClaudeHeld } from '../../lib/helpers.ts';
-import type { Email, Account, SweepCheck } from '../../types/index.ts';
+import type { RuleMatch, StreamTag } from '../../lib/emailFilter.ts';
+import type { Email, Account, SweepEmail } from '../../types/index.ts';
 
 const txtArea = typeof document !== 'undefined' ? document.createElement('textarea') : null;
 function decodeHTML(html: string): string {
-  if (!txtArea) return html;
+  // Only entities need decoding, and most text has none.
+  if (!txtArea || !html.includes('&')) return html;
   txtArea.innerHTML = html;
   return txtArea.value;
 }
+
+const isDeleteAction = (action: string) => action === 'delete' || action === 'keep_newest_delete';
 
 const LONG_PRESS_MS = 500;
 const MOVE_THRESHOLD = 10;
@@ -22,38 +27,36 @@ interface MobileEmailListItemProps {
   accounts: Account[];
   columnId: string;
   sourceAccountId?: string;
-  sweepSeconds?: number;
-  sweepAction?: string;
-  /** Set when the sweep belongs to a Claude-checked rule. */
-  sweepCheck?: SweepCheck;
-  matchedSweepRule?: { action: string; delayHours: number; claude?: boolean };
-  matchedStreams?: Array<{ id: string; accent: string }>;
+  /** The email's entry in the sweep queue, if it has one. */
+  sweep?: SweepEmail;
+  matchedSweepRule?: RuleMatch;
+  matchedStreams?: StreamTag[];
 }
 
-export function MobileEmailListItem({
+// Memoized, with its own selection state, so a tap redraws only the rows it changes.
+export const MobileEmailListItem = memo(function MobileEmailListItem({
   email,
   accent,
   accounts,
   columnId,
   sourceAccountId,
-  sweepSeconds,
-  sweepAction,
-  sweepCheck,
+  sweep,
   matchedSweepRule,
   matchedStreams,
 }: MobileEmailListItemProps) {
   const selectEmail = useStore(s => s.selectEmail);
-  const multiSelectedIds = useStore(s => s.multiSelectedIds);
   const toggleMultiSelect = useStore(s => s.toggleMultiSelect);
   const archiveEmail = useStore(s => s.archiveEmail);
   const deleteEmail = useStore(s => s.deleteEmail);
   const isExempted = useStore(s => s.exemptedEmailIds.has(email.id));
-  const selectedEmailId = useStore(s => s.selectedEmail?.emailId ?? null);
+  const isMultiSelected = useStore(s => s.multiSelectedIds.has(email.id));
+  const inMultiSelectMode = useStore(s => s.multiSelectedIds.size > 0);
+  const isViewing = useStore(s => s.selectedEmail?.emailId === email.id);
+  const sender = useMemo(() => decodeHTML(email.sender), [email.sender]);
+  const subject = useMemo(() => decodeHTML(email.subject), [email.subject]);
+  const snippet = useMemo(() => decodeHTML(email.snippet), [email.snippet]);
 
   const account = accounts.find(a => a.id === email.accountId);
-  const isMultiSelected = multiSelectedIds.has(email.id);
-  const inMultiSelectMode = multiSelectedIds.size > 0;
-  const isViewing = selectedEmailId === email.id;
 
   const [offset, setOffset] = useState(0);
 
@@ -164,21 +167,23 @@ export function MobileEmailListItem({
   }, []);
 
   // A sweep held by a Claude check shows its state instead of a countdown.
-  const held = !!sweepCheck && isClaudeHeld({ aiStatus: sweepCheck.status });
-  let effectiveSweepSeconds = held ? undefined : sweepSeconds;
-  let effectiveSweepAction = sweepAction;
-  if (effectiveSweepSeconds == null && !held && matchedSweepRule && !matchedSweepRule.claude && !isExempted) {
-    const ageSec = Math.floor((Date.now() - email.time) / 1000);
-    const remaining = matchedSweepRule.delayHours * 3600 - ageSec;
-    if (remaining > 0) {
-      effectiveSweepSeconds = remaining;
-      effectiveSweepAction = matchedSweepRule.action === 'delete' || matchedSweepRule.action === 'keep_newest_delete'
-        ? 'delete'
-        : 'archive';
-    }
+  const held = !!sweep && isClaudeHeld(sweep);
+  let dueAt = held ? undefined : sweep?.dueAt;
+  let sweepAction = sweep?.action || 'archive';
+  if (dueAt == null && !held && matchedSweepRule && !matchedSweepRule.claude && !isExempted) {
+    dueAt = email.time + matchedSweepRule.delayHours * 3_600_000;
+    sweepAction = isDeleteAction(matchedSweepRule.action) ? 'delete' : 'archive';
   }
-  const hasSweep = effectiveSweepSeconds != null && effectiveSweepSeconds > 0;
-  const hasSweepRule = hasSweep || held || (!!matchedSweepRule && !isExempted);
+  const hasSweepRule = !!sweep || (!!matchedSweepRule && !isExempted);
+  const ruleBadge = matchedSweepRule && !isExempted ? (
+    <div className="mobile-email-sweep-row">
+      <span className="mobile-email-sweep-badge rule-matched">
+        <Icons.Sweep />
+        {isDeleteAction(matchedSweepRule.action) ? 'Delete' : 'Archive'}
+        {matchedSweepRule.claude ? ' if Claude agrees' : ' (sweep rule)'}
+      </span>
+    </div>
+  ) : null;
 
   const className = [
     'mobile-email-row',
@@ -231,7 +236,7 @@ export function MobileEmailListItem({
         )}
         <div className="mobile-email-row-content">
           <div className="mobile-email-row-top">
-            <span className="mobile-email-sender">{decodeHTML(email.sender)}</span>
+            <span className="mobile-email-sender">{sender}</span>
             {email.starred && <span className="mobile-email-star">{'★'}</span>}
             {account && (
               <span
@@ -243,33 +248,29 @@ export function MobileEmailListItem({
             )}
             <span className="mobile-email-time">{formatTime(email.time)}</span>
           </div>
-          <div className="mobile-email-subject">{decodeHTML(email.subject)}</div>
-          <div className="mobile-email-snippet">{decodeHTML(email.snippet)}</div>
+          <div className="mobile-email-subject">{subject}</div>
+          <div className="mobile-email-snippet">{snippet}</div>
           {held && (
             <div className="mobile-email-sweep-row">
-              <span className={`mobile-email-sweep-badge claude-${sweepCheck!.status}`}>
+              <span className={`mobile-email-sweep-badge claude-${sweep.aiStatus}`}>
                 <Icons.Sparkle />
-                {claudeCheckLabel(sweepCheck!.status)}
+                {claudeCheckLabel(sweep.aiStatus!)}
               </span>
             </div>
           )}
-          {hasSweep && (
-            <div className="mobile-email-sweep-row">
-              <span className={`mobile-email-sweep-badge ${getCountdownClass(effectiveSweepSeconds!)}`}>
-                <Icons.Clock />
-                {effectiveSweepAction === 'delete' ? 'Delete' : 'Archive'} in {formatCountdown(effectiveSweepSeconds!)}
-              </span>
-            </div>
-          )}
-          {!hasSweep && !held && matchedSweepRule && !isExempted && (
-            <div className="mobile-email-sweep-row">
-              <span className="mobile-email-sweep-badge rule-matched">
-                <Icons.Sweep />
-                {matchedSweepRule.action === 'delete' || matchedSweepRule.action === 'keep_newest_delete' ? 'Delete' : 'Archive'}
-                {matchedSweepRule.claude ? ' if Claude agrees' : ' (sweep rule)'}
-              </span>
-            </div>
-          )}
+          {dueAt != null ? (
+            // Once the countdown runs out, the rule badge shows until the sweep removes the row.
+            <Countdown dueAt={dueAt}>
+              {seconds => seconds > 0 ? (
+                <div className="mobile-email-sweep-row">
+                  <span className={`mobile-email-sweep-badge ${getCountdownClass(seconds)}`}>
+                    <Icons.Clock />
+                    {sweepAction === 'delete' ? 'Delete' : 'Archive'} in {formatCountdown(seconds)}
+                  </span>
+                </div>
+              ) : ruleBadge}
+            </Countdown>
+          ) : !held && ruleBadge}
         </div>
         {matchedStreams && matchedStreams.length > 0 && (
           <div className="mobile-email-stream-indicators" aria-hidden>
@@ -281,4 +282,4 @@ export function MobileEmailListItem({
       </div>
     </div>
   );
-}
+});

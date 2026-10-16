@@ -1,3 +1,9 @@
+// Formatting a date with options builds a formatter each time, which is slow enough to
+// matter across a column of cards; these are built once.
+const TIME = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
+const WEEKDAY = new Intl.DateTimeFormat(undefined, { weekday: 'long' });
+const MONTH_DAY = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
+
 export function formatTime(timestamp: number): string {
   const date = new Date(timestamp);
   const now = new Date();
@@ -9,17 +15,17 @@ export function formatTime(timestamp: number): string {
 
   if (diffDays === 0) {
     // Today: show time like "2:30 PM"
-    return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    return TIME.format(date);
   }
   if (diffDays === 1) {
     return 'Yesterday';
   }
   if (diffDays < 7) {
     // Within the last week: show day name
-    return date.toLocaleDateString(undefined, { weekday: 'long' });
+    return WEEKDAY.format(date);
   }
   // Older: show date like "Feb 15"
-  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return MONTH_DAY.format(date);
 }
 
 export function formatCountdown(seconds: number): string {

@@ -13,6 +13,37 @@ import type { Column, Account, SweepRule, SweepEmail, Email } from '../types/ind
 
 const useMockData = import.meta.env.VITE_USE_MOCK_DATA === 'true';
 
+/** Same fields with the same values (arrays compared item by item). */
+function sameFields<T extends object>(a: T, b: T): boolean {
+  const keys = Object.keys(a) as (keyof T)[];
+  if (keys.length !== Object.keys(b).length) return false;
+  for (const k of keys) {
+    const x = a[k];
+    const y = b[k];
+    if (x === y) continue;
+    if (Array.isArray(x) && Array.isArray(y) && x.length === y.length && x.every((v, i) => v === y[i])) continue;
+    return false;
+  }
+  return true;
+}
+
+/**
+ * The new list, reusing the store's object for every entry that didn't change, and the
+ * store's own list when nothing changed at all. Cards, column filters and rule matches
+ * are keyed on these objects, so a refresh only redoes the work for what changed.
+ */
+function keepUnchanged<T extends { id: string }>(next: T[], current: T[]): T[] {
+  const byId = new Map(current.map(e => [e.id, e]));
+  let same = next.length === current.length;
+  const merged = next.map((e, i) => {
+    const prev = byId.get(e.id);
+    const kept = prev && sameFields(prev, e) ? prev : e;
+    if (kept !== current[i]) same = false;
+    return kept;
+  });
+  return same ? current : merged;
+}
+
 /**
  * Syncs Supabase data into the Zustand store.
  * When mock data is enabled, this hook is a no-op.
@@ -122,9 +153,9 @@ export function useSyncStore() {
   useEffect(() => {
     if (useMockData || !dbEmailPages) return;
     const allDbEmails = dbEmailPages.pages.flat();
-    const pendingRemovals = useStore.getState()._pendingRemovals;
+    const { _pendingRemovals: pendingRemovals, emails: current } = useStore.getState();
     const serverIds = new Set(allDbEmails.map(e => e.id));
-    const mapped: Email[] = allDbEmails
+    const fetched: Email[] = allDbEmails
       .filter(e => !pendingRemovals.has(e.id))
       .map(e => {
         const firstRecipient = Array.isArray(e.recipients) && e.recipients.length > 0
@@ -146,6 +177,7 @@ export function useSyncStore() {
           isBulk: e.is_bulk,
         };
       });
+    const mapped = keepUnchanged(fetched, current);
     // Clear pending removals that the server has confirmed (no longer in results)
     if (pendingRemovals.size > 0) {
       const confirmed = new Set(pendingRemovals);
@@ -179,6 +211,7 @@ export function useSyncStore() {
     if (useMockData || !dbSweepQueue) return;
     const existing = useStore.getState().sweepEmails;
     const existingMap = new Map(existing.map(e => [e.id, e]));
+    const now = Date.now();
 
     const merged: SweepEmail[] = [];
     for (const item of dbSweepQueue) {
@@ -187,27 +220,27 @@ export function useSyncStore() {
       if (prev?.expiring) { merged.push(prev); continue; }
 
       const scheduledAt = new Date(item.scheduled_at).getTime();
-      const secondsRemaining = Math.max(0, Math.floor((scheduledAt - Date.now()) / 1000));
       const aiStatus = item.ai_status === 'no_match' ? undefined : item.ai_status ?? undefined;
       const held = aiStatus === 'pending' || aiStatus === 'unsure' || aiStatus === 'failed';
 
       // Skip items that are already past due — let the server executor handle them
       // Only show items that the client already knew about (prev exists) or still have time left
-      if (secondsRemaining <= 0 && !prev && !held) continue;
+      if (scheduledAt <= now && !prev && !held) continue;
 
       merged.push({
         id: item.email_id,
         accountId: item.email?.account_id || '',
         sender: item.email?.sender_name || item.email?.sender_email || '',
         subject: item.email?.subject || '',
-        // Keep the client's ticking countdown if it's more recent (lower) than the server value
-        sweepSeconds: prev ? Math.min(prev.sweepSeconds, secondsRemaining) : secondsRemaining,
+        // Keep the client's due time if it's earlier than the server's
+        dueAt: prev ? Math.min(prev.dueAt, scheduledAt) : scheduledAt,
         exempted: false,
         action: item.action,
         ...(aiStatus ? { aiStatus, aiReason: aiStatus === 'failed' || aiStatus === 'pending' ? item.ai_error : item.ai_reason } : {}),
       });
     }
-    useStore.setState({ sweepEmails: merged });
+    const sweepEmails = keepUnchanged(merged, existing);
+    if (sweepEmails !== existing) useStore.setState({ sweepEmails });
   }, [dbSweepQueue]);
 
   // New-email client tagging: when genuinely new emails arrive via

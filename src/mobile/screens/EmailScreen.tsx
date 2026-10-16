@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Icons } from '../../components/ui/Icons.tsx';
+import { Countdown } from '../../components/ui/Countdown.tsx';
 import { useStore } from '../../store/index.ts';
 import { useEmailBody } from '../../hooks/useEmailBody.ts';
 import { formatCountdown, getCountdownClass } from '../../lib/helpers.ts';
@@ -93,7 +94,6 @@ export function EmailScreen({ nav: _nav }: EmailScreenProps) {
   const avatarLetter = email.sender.charAt(0).toUpperCase();
   const avatarBg = account ? account.color : 'var(--blue)';
   const sweepItem = sweepEmails.find(s => s.id === email.id);
-  const hasSweep = !!sweepItem && sweepItem.sweepSeconds > 0;
   const hasHtml = body?.body_html;
   const hasText = body?.body_text;
 
@@ -190,13 +190,17 @@ export function EmailScreen({ nav: _nav }: EmailScreenProps) {
               )}
             </div>
           </div>
-          {hasSweep && sweepItem && (
-            <div className="mobile-email-meta-sweep">
-              <span className={`mobile-email-sweep-badge ${getCountdownClass(sweepItem.sweepSeconds)}`}>
-                <Icons.Clock />
-                {sweepItem.action === 'delete' ? 'Delete' : 'Archive'} in {formatCountdown(sweepItem.sweepSeconds)}
-              </span>
-            </div>
+          {sweepItem && (
+            <Countdown dueAt={sweepItem.dueAt}>
+              {seconds => seconds > 0 && (
+                <div className="mobile-email-meta-sweep">
+                  <span className={`mobile-email-sweep-badge ${getCountdownClass(seconds)}`}>
+                    <Icons.Clock />
+                    {sweepItem.action === 'delete' ? 'Delete' : 'Archive'} in {formatCountdown(seconds)}
+                  </span>
+                </div>
+              )}
+            </Countdown>
           )}
         </div>
 

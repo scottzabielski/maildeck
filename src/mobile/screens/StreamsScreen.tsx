@@ -1,7 +1,7 @@
 import { useMemo, useRef, useCallback, useLayoutEffect, useEffect, useState } from 'react';
 import { Icons } from '../../components/ui/Icons.tsx';
 import { useStore } from '../../store/index.ts';
-import { emailMatchesCriteria, beginCriteriaMatch, endCriteriaMatch } from '../../lib/emailFilter.ts';
+import { emailMatchesSearch, inStream, sweepRuleMatch, sweepsById } from '../../lib/emailFilter.ts';
 import { scrollPositions } from '../../lib/scrollPositions.ts';
 import { MobileTopBar } from '../components/MobileTopBar.tsx';
 import { MobileSegmentedPicker, type SegmentedPickerOption } from '../components/MobileSegmentedPicker.tsx';
@@ -12,8 +12,8 @@ import { MobileFiltersSheet } from '../components/MobileFiltersSheet.tsx';
 import { MobileMultiSelectBar } from '../components/MobileMultiSelectBar.tsx';
 import { usePullToRefresh } from '../hooks/usePullToRefresh.ts';
 import { useSyncAccount } from '../../hooks/useEmails.ts';
+import { useRenderWindow } from '../../hooks/useRenderWindow.ts';
 import type { MobileNav } from '../navTypes.ts';
-import type { SweepCheck } from '../../types/index.ts';
 import { isClaudeHeld } from '../../lib/helpers.ts';
 
 const SWEEP_ID = '__sweep__';
@@ -63,75 +63,31 @@ export function StreamsScreen({ nav: _nav }: StreamsScreenProps) {
     : null;
   const isSweep = mobileStreamSelected === SWEEP_ID;
 
-  const enabledSweepRules = useMemo(
-    () => sweepRules.filter(r => r.enabled),
-    [sweepRules],
-  );
-
   // === Stream filter logic (mirrors src/components/Column.tsx) ===
+  // The sweep queue and rules are deps because a stream can use the "sweep" criterion.
   const columnEmails = useMemo(() => {
     if (!selectedColumn) return [] as typeof emails;
-    beginCriteriaMatch();
-    const result = emails.filter(e => {
+    return emails.filter(e => {
       if (disabledAccountIds.has(e.accountId)) return false;
       if (e.columnId) return e.columnId === selectedColumn.id;
-      if (selectedColumn.criteria.length > 0) {
-        return emailMatchesCriteria(e, selectedColumn.criteria, selectedColumn.criteriaLogic);
-      }
-      return false;
+      return selectedColumn.criteria.length > 0 && inStream(e, selectedColumn);
     });
-    endCriteriaMatch();
-    return result;
-  }, [emails, selectedColumn, disabledAccountIds]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [emails, selectedColumn, disabledAccountIds, sweepEmails, sweepRules]);
 
   const displayEmails = useMemo(() => {
     let filtered = columnEmails;
     const q = searchQuery.toLowerCase();
-    if (q) {
-      filtered = filtered.filter(e =>
-        e.sender.toLowerCase().includes(q)
-        || (e.senderEmail || '').toLowerCase().includes(q)
-        || e.subject.toLowerCase().includes(q)
-        || e.snippet.toLowerCase().includes(q)
-      );
-    }
-    if (globalFilters.has('no-sweep')) {
-      beginCriteriaMatch();
-      filtered = filtered.filter(e =>
-        !enabledSweepRules.some(rule => emailMatchesCriteria(e, rule.criteria, rule.criteriaLogic))
-      );
-      endCriteriaMatch();
-    }
+    if (q) filtered = filtered.filter(e => emailMatchesSearch(e, q));
+    if (globalFilters.has('no-sweep')) filtered = filtered.filter(e => !sweepRuleMatch(e));
     if (globalFilters.has('unread')) filtered = filtered.filter(e => e.unread);
     if (globalFilters.has('read')) filtered = filtered.filter(e => !e.unread);
     if (globalFilters.has('starred')) filtered = filtered.filter(e => e.starred);
     return filtered;
-  }, [columnEmails, searchQuery, globalFilters, enabledSweepRules]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [columnEmails, searchQuery, globalFilters, sweepRules, allColumns]);
 
-  const sweepLookup = useMemo(() => {
-    const map = new Map<string, { seconds: number; action: string; check?: SweepCheck }>();
-    for (const s of sweepEmails) map.set(s.id, { seconds: s.sweepSeconds, action: s.action || 'archive', ...(s.aiStatus ? { check: { status: s.aiStatus, reason: s.aiReason } } : {}) });
-    return map;
-  }, [sweepEmails]);
-
-  const sweepRuleMatchLookup = useMemo(() => {
-    const map = new Map<string, { action: string; delayHours: number; claude?: boolean }>();
-    if (enabledSweepRules.length === 0) return map;
-    beginCriteriaMatch();
-    for (const email of columnEmails) {
-      let bestRule: { action: string; delayHours: number; claude?: boolean } | null = null;
-      for (const rule of enabledSweepRules) {
-        if (emailMatchesCriteria(email, rule.criteria, rule.criteriaLogic)) {
-          if (!bestRule || rule.delayHours < bestRule.delayHours) {
-            bestRule = { action: rule.action, delayHours: rule.delayHours, claude: !!rule.aiCheck?.enabled };
-          }
-        }
-      }
-      if (bestRule) map.set(email.id, bestRule);
-    }
-    endCriteriaMatch();
-    return map;
-  }, [columnEmails, enabledSweepRules]);
+  const sweeps = sweepsById(sweepEmails);
 
   // === Sweep view ===
   const filteredSweepEmails = useMemo(
@@ -152,7 +108,7 @@ export function StreamsScreen({ nav: _nav }: StreamsScreenProps) {
       const unread = emails.filter(e => {
         if (disabledAccountIds.has(e.accountId)) return false;
         if (e.columnId) return e.columnId === col.id && e.unread;
-        if (col.criteria.length > 0) return emailMatchesCriteria(e, col.criteria, col.criteriaLogic) && e.unread;
+        if (col.criteria.length > 0) return e.unread && inStream(e, col);
         return false;
       }).length;
       opts.push({ id: col.id, label: col.name, color: col.accent, count: unread });
@@ -165,6 +121,7 @@ export function StreamsScreen({ nav: _nav }: StreamsScreenProps) {
   // === Scroll position persistence ===
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollKey = `mobile-stream-${selectedSegmentId}`;
+  const { shown, hasMore, grow } = useRenderWindow(scrollKey, isSweep ? filteredSweepEmails.length : displayEmails.length, -1);
 
   useLayoutEffect(() => {
     const saved = scrollPositions.get(scrollKey);
@@ -173,28 +130,30 @@ export function StreamsScreen({ nav: _nav }: StreamsScreenProps) {
     }
   }, [scrollKey]);
 
+  // When the list isn't scrollable, draw more of the loaded emails, then fetch more pages.
   useEffect(() => {
     const el = scrollRef.current;
-    if (!el || !_hasNextPage || !_fetchNextPage || globalFilters.size > 0 || searchQuery || displayEmails.length === 0) return;
+    if (!el || globalFilters.size > 0 || searchQuery || displayEmails.length === 0) return;
+    if (!hasMore && (!_hasNextPage || !_fetchNextPage)) return;
     const check = () => {
-      if (_isFetchingNextPage) return;
       const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 200;
-      if (el.scrollHeight <= el.clientHeight + 10 || atBottom) {
-        _fetchNextPage();
-      }
+      if (el.scrollHeight > el.clientHeight + 10 && !atBottom) return;
+      if (hasMore) grow();
+      else if (!_isFetchingNextPage) _fetchNextPage?.();
     };
     check();
     const id = setInterval(check, 300);
     return () => clearInterval(id);
-  }, [_hasNextPage, _isFetchingNextPage, _fetchNextPage, globalFilters, searchQuery, displayEmails.length]);
+  }, [_hasNextPage, _isFetchingNextPage, _fetchNextPage, globalFilters, searchQuery, displayEmails.length, hasMore, grow]);
 
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
     scrollPositions.set(scrollKey, el.scrollTop);
-    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 200) {
-      if (_hasNextPage && !_isFetchingNextPage) _fetchNextPage?.();
-    }
-  }, [scrollKey, _fetchNextPage, _hasNextPage, _isFetchingNextPage]);
+    const fromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    // Draw more rows a screen early so scrolling never reaches the end of what's drawn.
+    if (hasMore && fromBottom <= el.clientHeight) grow();
+    else if (!hasMore && fromBottom <= 200 && _hasNextPage && !_isFetchingNextPage) _fetchNextPage?.();
+  }, [scrollKey, _fetchNextPage, _hasNextPage, _isFetchingNextPage, hasMore, grow]);
 
   const syncMutation = useSyncAccount();
   const handleRefresh = useCallback(async () => {
@@ -294,7 +253,7 @@ export function StreamsScreen({ nav: _nav }: StreamsScreenProps) {
             filteredSweepEmails.length === 0 ? (
               <div className="mobile-empty">Nothing scheduled for sweep.</div>
             ) : (
-              filteredSweepEmails.map(email => (
+              filteredSweepEmails.slice(0, shown).map(email => (
                 <MobileSweepListItem key={email.id} email={email} />
               ))
             )
@@ -303,17 +262,15 @@ export function StreamsScreen({ nav: _nav }: StreamsScreenProps) {
           ) : displayEmails.length === 0 ? (
             <div className="mobile-empty">No emails match this stream.</div>
           ) : (
-            displayEmails.map(email => (
+            displayEmails.slice(0, shown).map(email => (
               <MobileEmailListItem
                 key={email.id}
                 email={email}
                 accent={selectedColumn.accent}
                 accounts={accounts}
                 columnId={selectedColumn.id}
-                sweepSeconds={sweepLookup.get(email.id)?.seconds}
-                sweepAction={sweepLookup.get(email.id)?.action}
-                sweepCheck={sweepLookup.get(email.id)?.check}
-                matchedSweepRule={sweepRuleMatchLookup.get(email.id)}
+                sweep={sweeps.get(email.id)}
+                matchedSweepRule={sweepRuleMatch(email) ?? undefined}
               />
             ))
           )}

@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Icons } from './ui/Icons.tsx';
+import { Countdown } from './ui/Countdown.tsx';
 import { useStore } from '../store/index.ts';
 import { formatCountdown, getCountdownClass, claudeCheckLabel, isClaudeHeld } from '../lib/helpers.ts';
 import type { SweepEmail } from '../types/index.ts';
@@ -51,16 +52,14 @@ interface SweepCardProps {
   email: SweepEmail;
 }
 
-export function SweepCard({ email }: SweepCardProps) {
+export const SweepCard = memo(function SweepCard({ email }: SweepCardProps) {
   const accounts = useStore(s => s.accounts);
   const exemptSweepEmail = useStore(s => s.exemptSweepEmail);
   const approveSweepCheck = useStore(s => s.approveSweepCheck);
   const retrySweepCheck = useStore(s => s.retrySweepCheck);
   const removeSweepEmail = useStore(s => s.removeSweepEmail);
   const selectEmail = useStore(s => s.selectEmail);
-  const soundVolume = useStore(s => s.soundVolume);
   const account = accounts.find(a => a.id === email.accountId);
-  const cdClass = getCountdownClass(email.sweepSeconds);
   const isExpiring = email.expiring === true;
   const isDelete = email.action === 'delete';
   // Held by a Claude check: no countdown, nothing runs until Claude says match.
@@ -141,13 +140,17 @@ export function SweepCard({ email }: SweepCardProps) {
             {claudeCheckLabel(email.aiStatus!)}
           </div>
         ) : (
-          <div className={`sweep-countdown ${cdClass}`}>
-            <Icons.Clock />
-            {isExpiring
-              ? (isDelete ? 'Deleting...' : 'Archiving...')
-              : <>{isDelete ? 'Delete' : 'Archive'} in {formatCountdown(email.sweepSeconds)}</>
-            }
-          </div>
+          <Countdown dueAt={email.dueAt}>
+            {seconds => (
+              <div className={`sweep-countdown ${getCountdownClass(seconds)}`}>
+                <Icons.Clock />
+                {isExpiring
+                  ? (isDelete ? 'Deleting...' : 'Archiving...')
+                  : <>{isDelete ? 'Delete' : 'Archive'} in {formatCountdown(seconds)}</>
+                }
+              </div>
+            )}
+          </Countdown>
         )}
         {!isExpiring && (
           <div className="sweep-actions">
@@ -190,4 +193,4 @@ export function SweepCard({ email }: SweepCardProps) {
       )}
     </motion.div>
   );
-}
+});

@@ -1,7 +1,8 @@
-import { useMemo } from 'react';
+import { useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { SweepCard } from './SweepCard.tsx';
 import { useStore } from '../store/index.ts';
+import { useRenderWindow } from '../hooks/useRenderWindow.ts';
 import { isClaudeHeld } from '../lib/helpers.ts';
 
 interface SweepColumnProps {
@@ -20,6 +21,12 @@ export function SweepColumn({ columnCount = 0 }: SweepColumnProps) {
     },
     [sweepEmails, disabledAccountIds]
   );
+  // A new rule can queue thousands of emails at once; draw them as you scroll.
+  const { shown, hasMore, grow } = useRenderWindow('sweep', filtered.length, -1);
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    if (hasMore && el.scrollHeight - el.scrollTop - el.clientHeight <= el.clientHeight) grow();
+  }, [hasMore, grow]);
 
   return (
     <motion.div
@@ -34,9 +41,9 @@ export function SweepColumn({ columnCount = 0 }: SweepColumnProps) {
         <span className="column-name">Sweep</span>
         <span className="column-count">{filtered.length}</span>
       </div>
-      <div className="column-emails">
+      <div className="column-emails" onScroll={handleScroll}>
         <AnimatePresence initial={false}>
-          {filtered.map(email => (
+          {filtered.slice(0, shown).map(email => (
             <SweepCard key={email.id} email={email} />
           ))}
         </AnimatePresence>

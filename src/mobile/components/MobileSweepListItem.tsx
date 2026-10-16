@@ -1,4 +1,6 @@
+import { memo } from 'react';
 import { Icons } from '../../components/ui/Icons.tsx';
+import { Countdown } from '../../components/ui/Countdown.tsx';
 import { useStore } from '../../store/index.ts';
 import { formatCountdown, getCountdownClass, claudeCheckLabel, isClaudeHeld } from '../../lib/helpers.ts';
 import type { SweepEmail } from '../../types/index.ts';
@@ -7,7 +9,7 @@ interface MobileSweepListItemProps {
   email: SweepEmail;
 }
 
-export function MobileSweepListItem({ email }: MobileSweepListItemProps) {
+export const MobileSweepListItem = memo(function MobileSweepListItem({ email }: MobileSweepListItemProps) {
   const accounts = useStore(s => s.accounts);
   const exemptSweepEmail = useStore(s => s.exemptSweepEmail);
   const approveSweepCheck = useStore(s => s.approveSweepCheck);
@@ -15,7 +17,6 @@ export function MobileSweepListItem({ email }: MobileSweepListItemProps) {
   const selectEmail = useStore(s => s.selectEmail);
 
   const account = accounts.find(a => a.id === email.accountId);
-  const cdClass = getCountdownClass(email.sweepSeconds);
   const isExpiring = email.expiring === true;
   const isDelete = email.action === 'delete';
   // Held by a Claude check: no countdown, nothing runs until Claude says match.
@@ -59,13 +60,17 @@ export function MobileSweepListItem({ email }: MobileSweepListItemProps) {
               {claudeCheckLabel(email.aiStatus!)}
             </span>
           ) : (
-            <span className={`mobile-email-sweep-badge ${cdClass}`}>
-              <Icons.Clock />
-              {isExpiring
-                ? (isDelete ? 'Deleting…' : 'Archiving…')
-                : <>{isDelete ? 'Delete' : 'Archive'} in {formatCountdown(email.sweepSeconds)}</>
-              }
-            </span>
+            <Countdown dueAt={email.dueAt}>
+              {seconds => (
+                <span className={`mobile-email-sweep-badge ${getCountdownClass(seconds)}`}>
+                  <Icons.Clock />
+                  {isExpiring
+                    ? (isDelete ? 'Deleting…' : 'Archiving…')
+                    : <>{isDelete ? 'Delete' : 'Archive'} in {formatCountdown(seconds)}</>
+                  }
+                </span>
+              )}
+            </Countdown>
           )}
           {!isExpiring && (
             <span className="mobile-sweep-actions">
@@ -100,4 +105,4 @@ export function MobileSweepListItem({ email }: MobileSweepListItemProps) {
       </div>
     </div>
   );
-}
+});

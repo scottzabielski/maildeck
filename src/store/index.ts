@@ -115,11 +115,11 @@ const EMAILS: Email[] = [
 ];
 
 const SWEEP_EMAILS_INIT: SweepEmail[] = [
-  { id: 's1', accountId: 'szabielski', sender: 'LinkedIn', subject: 'Your weekly career update', sweepSeconds: 10, exempted: false, action: 'delete' },
-  { id: 's2', accountId: 'gs-gmail', sender: 'Uber Eats', subject: 'Craving something? 30% off today', sweepSeconds: 3 * 3600 + 1420, exempted: false },
-  { id: 's3', accountId: 'scottz', sender: 'Mailchimp', subject: 'Your campaign stats are in', sweepSeconds: 12 * 3600 + 600, exempted: false },
-  { id: 's4', accountId: 'syzmail', sender: 'Jira', subject: '[PROJ-412] moved to In Review', sweepSeconds: 2 * 86400 + 7200, exempted: false },
-  { id: 's5', accountId: 'channel1', sender: 'Coursera', subject: 'Continue learning: ML Specialization', sweepSeconds: 6 * 86400 + 14400, exempted: false },
+  { id: 's1', accountId: 'szabielski', sender: 'LinkedIn', subject: 'Your weekly career update', dueAt: NOW + 10_000, exempted: false, action: 'delete' },
+  { id: 's2', accountId: 'gs-gmail', sender: 'Uber Eats', subject: 'Craving something? 30% off today', dueAt: NOW + (3 * 3600 + 1420) * 1000, exempted: false },
+  { id: 's3', accountId: 'scottz', sender: 'Mailchimp', subject: 'Your campaign stats are in', dueAt: NOW + (12 * 3600 + 600) * 1000, exempted: false },
+  { id: 's4', accountId: 'syzmail', sender: 'Jira', subject: '[PROJ-412] moved to In Review', dueAt: NOW + (2 * 86400 + 7200) * 1000, exempted: false },
+  { id: 's5', accountId: 'channel1', sender: 'Coursera', subject: 'Continue learning: ML Specialization', dueAt: NOW + (6 * 86400 + 14400) * 1000, exempted: false },
 ];
 
 const SWEEP_RULES: SweepRule[] = [
@@ -414,7 +414,8 @@ export const useStore = create<StoreState>((set, get) => ({
     set(s => ({
       selectedEmail: { emailId, sourceColumnId, sourceAccountId, viewMode },
       highlightedEmail: { emailId, columnId: sourceColumnId, accountId: sourceAccountId },
-      emails: s.emails.map(e => e.id === emailId ? { ...e, unread: false } : e),
+      // A new email list re-filters every column, so only make one when this email changes.
+      ...(email?.unread ? { emails: s.emails.map(e => e.id === emailId ? { ...e, unread: false } : e) } : {}),
       contextMenu: null,
     }));
     if (email?.unread) fireEmailAction(emailId, 'mark_read');
@@ -504,7 +505,11 @@ export const useStore = create<StoreState>((set, get) => ({
     set({ multiSelectedIds: next });
   },
 
-  clearMultiSelect: () => set({ multiSelectedIds: new Set<string>(), lastClickedEmailId: null }),
+  clearMultiSelect: () => set(s => ({
+    // Every click clears the selection; keep the same empty set so nothing watching it redraws.
+    multiSelectedIds: s.multiSelectedIds.size === 0 ? s.multiSelectedIds : new Set<string>(),
+    lastClickedEmailId: null,
+  })),
 
   archiveSelected: () => {
     const state = get();
@@ -584,9 +589,9 @@ export const useStore = create<StoreState>((set, get) => ({
   moveToSweep: (emailId) => {
     const email = get().emails.find(e => e.id === emailId);
     if (!email) return;
-    const delaySec = get().sweepDelayHours * 3600;
+    const dueAt = Date.now() + get().sweepDelayHours * 3_600_000;
     set(s => ({
-      sweepEmails: [...s.sweepEmails, { id: email.id, accountId: email.accountId, sender: email.sender, subject: email.subject, sweepSeconds: delaySec, exempted: false }].sort((a, b) => a.sweepSeconds - b.sweepSeconds),
+      sweepEmails: [...s.sweepEmails, { id: email.id, accountId: email.accountId, sender: email.sender, subject: email.subject, dueAt, exempted: false }].sort((a, b) => a.dueAt - b.dueAt),
       undoAction: { type: 'moveToSweep', email, timestamp: Date.now() },
     }));
   },
@@ -661,7 +666,7 @@ export const useStore = create<StoreState>((set, get) => ({
         exemptedEmailIds.delete(exempted.id);
         saveExemptions(exemptedEmailIds);
         return {
-          sweepEmails: [...s.sweepEmails, exempted].sort((a, b) => a.sweepSeconds - b.sweepSeconds),
+          sweepEmails: [...s.sweepEmails, exempted].sort((a, b) => a.dueAt - b.dueAt),
           exemptedEmailIds,
           undoAction: null,
         };
@@ -809,12 +814,12 @@ export const useStore = create<StoreState>((set, get) => ({
       const updatedSweep = [...s.sweepEmails];
       const newItems: SweepEmail[] = [];
       const immediateIds: string[] = [];
+      const now = Date.now();
       for (const e of toSweep) {
-        const emailAgeSec = Math.floor((Date.now() - e.time) / 1000);
-        const remainingSec = Math.max(0, delayHours * 3600 - emailAgeSec);
+        const dueAt = e.time + delayHours * 3_600_000;
 
-        // Already past due — execute immediately instead of queuing with 0
-        if (remainingSec === 0) {
+        // Already past due — execute immediately instead of queuing
+        if (dueAt <= now) {
           immediateIds.push(e.id);
           continue;
         }
@@ -822,12 +827,12 @@ export const useStore = create<StoreState>((set, get) => ({
         const existing = sweepMap.get(e.id);
         if (existing) {
           // Replace only if new rule sweeps sooner
-          if (remainingSec < existing.sweepSeconds) {
+          if (dueAt < existing.dueAt) {
             const idx = updatedSweep.findIndex(s => s.id === e.id);
-            if (idx !== -1) updatedSweep[idx] = { ...existing, sweepSeconds: remainingSec, action: terminalAction };
+            if (idx !== -1) updatedSweep[idx] = { ...existing, dueAt, action: terminalAction };
           }
         } else {
-          newItems.push({ id: e.id, accountId: e.accountId, sender: e.sender, subject: e.subject, sweepSeconds: remainingSec, exempted: false, action: terminalAction });
+          newItems.push({ id: e.id, accountId: e.accountId, sender: e.sender, subject: e.subject, dueAt, exempted: false, action: terminalAction });
         }
       }
 
@@ -844,7 +849,7 @@ export const useStore = create<StoreState>((set, get) => ({
         emails: immediateIds.length > 0
           ? s.emails.filter(e => !immediateIds.includes(e.id))
           : s.emails,
-        sweepEmails: [...updatedSweep, ...newItems].sort((a, b) => a.sweepSeconds - b.sweepSeconds),
+        sweepEmails: [...updatedSweep, ...newItems].sort((a, b) => a.dueAt - b.dueAt),
       };
     });
   },
@@ -874,46 +879,43 @@ export const useStore = create<StoreState>((set, get) => ({
     }));
   },
 
+  // Runs every second, but only changes the store when a sweep comes due: the
+  // countdowns on screen tick on their own (see Countdown).
   tickSweepCountdowns: () => {
     const s = get();
+    const now = Date.now();
     const expired: { id: string; action: string }[] = [];
-    const updated = s.sweepEmails.map(e => {
+    for (const e of s.sweepEmails) {
       // Held by a Claude check: only the server sweeps it, once Claude says match.
-      if (e.expiring || isClaudeHeld(e)) return e;
-      const next = Math.max(0, e.sweepSeconds - 1);
-      if (next <= 0) {
-        const email = s.emails.find(em => em.id === e.id);
-        if (email?.unread) fireEmailAction(e.id, 'mark_read');
-        expired.push({ id: e.id, action: e.action || 'archive' });
-        return { ...e, sweepSeconds: 0, expiring: true };
-      }
-      return { ...e, sweepSeconds: next };
-    });
-    set({ sweepEmails: updated });
+      if (e.expiring || isClaudeHeld(e) || e.dueAt > now) continue;
+      const email = s.emails.find(em => em.id === e.id);
+      if (email?.unread) fireEmailAction(e.id, 'mark_read');
+      expired.push({ id: e.id, action: e.action || 'archive' });
+    }
+    if (expired.length === 0) return;
+    const expiredIds = new Set(expired.map(e => e.id));
+    set({ sweepEmails: s.sweepEmails.map(e => expiredIds.has(e.id) ? { ...e, expiring: true } : e) });
 
     // Fire expired actions and remove from store after animation delay
-    if (expired.length > 0) {
-      for (const { id, action } of expired) {
-        fireEmailAction(id, action as 'archive' | 'delete');
-        if (supabase) {
-          supabase
-            .from('sweep_queue')
-            .update({ executed: true })
-            .eq('email_id', id)
-            .then(({ error }) => {
-              if (error) console.error('Failed to mark sweep item executed:', error);
-            });
-        }
+    for (const { id, action } of expired) {
+      fireEmailAction(id, action as 'archive' | 'delete');
+      if (supabase) {
+        supabase
+          .from('sweep_queue')
+          .update({ executed: true })
+          .eq('email_id', id)
+          .then(({ error }) => {
+            if (error) console.error('Failed to mark sweep item executed:', error);
+          });
       }
-      // Remove from UI after brief animation
-      setTimeout(() => {
-        const expiredIds = expired.map(e => e.id);
-        set(s => ({
-          sweepEmails: s.sweepEmails.filter(e => !expiredIds.includes(e.id)),
-          emails: s.emails.filter(e => !expiredIds.includes(e.id)),
-          _pendingRemovals: new Set([...s._pendingRemovals, ...expiredIds]),
-        }));
-      }, 1000);
     }
+    // Remove from UI after brief animation
+    setTimeout(() => {
+      set(s => ({
+        sweepEmails: s.sweepEmails.filter(e => !expiredIds.has(e.id)),
+        emails: s.emails.filter(e => !expiredIds.has(e.id)),
+        _pendingRemovals: new Set([...s._pendingRemovals, ...expiredIds]),
+      }));
+    }, 1000);
   },
 }));
